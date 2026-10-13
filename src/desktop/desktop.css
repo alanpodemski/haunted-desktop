@@ -324,3 +324,6 @@
 .dk-icon.dk-moved .dk-icon-img img {
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
 }
+
+/* icons thrown by a shockwave fly to their new spot instead of jumping */
+.dk-icon.dk-thrown { transition: transform 0.45s cubic-bezier(.2,.9,.25,1); }

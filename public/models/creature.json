@@ -24,5 +24,8 @@
   },
   "scream": {
     "duration": 2.8
+  },
+  "attack": {
+    "duration": 2.6
   }
 }

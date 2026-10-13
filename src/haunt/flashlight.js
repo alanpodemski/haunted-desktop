@@ -88,8 +88,9 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
     get on() { return on; },
     /** cursor in normalised device coordinates */
     setPointer(x, y) { ndc.set(x, y); },
-    aimAt(p) {
+    aimAt(p, snap = false) {
       tmp.copy(p).project(camera); ndc.set(tmp.x, tmp.y);
+      if (snap) initialised = false;     // jump there this frame instead of swinging the arm
     },
     toggle(v = !on) { on = v; return on; },
     /** brief brown-out (the creature is close, or the batteries are old) */
@@ -105,7 +106,7 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
       const c = tmp.dot(dir);
       const r = Math.acos(THREE.MathUtils.clamp(c, -1, 1)) / spot.angle; // 0 centre .. 1 cone edge
       if (r >= 1) return 0;
-      return level * (0.12 + 0.88 * Math.exp(-Math.pow(r / 0.42, 3))) * Math.min(1, 9 / (d * d));
+      return level * (0.06 + 0.94 * Math.exp(-Math.pow(r / 0.42, 3))) * Math.min(1, 9 / (d * d));
     },
     update(dt) {
       t += dt;

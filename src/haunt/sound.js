@@ -4,6 +4,7 @@
 
 export function createSound() {
   let ctx = null, master = null, noiseBuf = null, room = null, muted = false;
+  let scrapeNode = null, droneNode = null;
 
   function ensure() {
     if (ctx) return true;
@@ -131,6 +132,87 @@ export function createSound() {
       const ng = ctx.createGain(); ng.gain.setValueAtTime(0.05 * strength, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
       n.connect(hp).connect(ng).connect(g); n.start(t); n.stop(t + 0.7);
       out(g);
+    },
+    /** a cardboard box landing or being hit: a hollow, low thump whose pitch drops with the box's size */
+    thud({ pos, strength = 0.5, size = 0.5 }) {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      const p = panner(pos);
+      const g = ctx.createGain();
+      const a = Math.min(1, strength) * 0.7;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18 + size * 0.15);
+      const n = noise();
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 520 - size * 300; bp.Q.value = 1.4;
+      n.connect(bp).connect(g);
+      const o = ctx.createOscillator(); o.frequency.setValueAtTime(140 - size * 70, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.15);
+      const og = ctx.createGain(); og.gain.value = 0.8; o.connect(og).connect(g);
+      g.connect(p); out(p);
+      n.start(t, Math.random()); n.stop(t + 0.4); o.start(t); o.stop(t + 0.3);
+    },
+    /** a box dragged over floorboards: filtered noise while the hand holds it */
+    scrape(on) {
+      if (!ready()) return;
+      if (on && !scrapeNode) {
+        const n = noise(true);
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 0.7;
+        const g = ctx.createGain(); g.gain.value = 0;
+        g.gain.setTargetAtTime(muted ? 0 : 0.03, ctx.currentTime, 0.05);
+        n.connect(bp).connect(g); out(g); n.start();
+        scrapeNode = { n, g };
+      } else if (!on && scrapeNode) {
+        const { n, g } = scrapeNode; scrapeNode = null;
+        g.gain.setTargetAtTime(0, ctx.currentTime, 0.05); n.stop(ctx.currentTime + 0.3);
+      }
+    },
+    /** the camera: shutter, the flash tube's pop, then the capacitor recharging (a rising whine) */
+    shutter(rechargeSeconds = 4) {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      for (const [dt, f] of [[0, 4200], [0.045, 2600]]) {
+        const n = noise(); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 2;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.35, t + dt); g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.035);
+        n.connect(bp).connect(g); out(g); n.start(t + dt); n.stop(t + dt + 0.06);
+      }
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(1800, t + 0.15); o.frequency.exponentialRampToValueAtTime(9000, t + rechargeSeconds);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.012, t + 0.4);
+      g.gain.setValueAtTime(0.012, t + rechargeSeconds - 0.1); g.gain.linearRampToValueAtTime(0, t + rechargeSeconds);
+      o.connect(g); out(g, false); o.start(t + 0.15); o.stop(t + rechargeSeconds + 0.05);
+    },
+    /** a low, beating drone while it is hunting you */
+    drone(on) {
+      if (!ready()) return;
+      if (on && !droneNode) {
+        const g = ctx.createGain(); g.gain.value = 0; g.gain.setTargetAtTime(muted ? 0 : 0.06, ctx.currentTime, 1.5);
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400;
+        const oscs = [41, 41.7, 61.5, 82.6].map((f) => { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(lp); o.start(); return o; });
+        lp.connect(g); out(g);
+        droneNode = { g, oscs };
+      } else if (!on && droneNode) {
+        const { g, oscs } = droneNode; droneNode = null;
+        g.gain.setTargetAtTime(0, ctx.currentTime, 0.8);
+        for (const o of oscs) o.stop(ctx.currentTime + 4);
+      }
+    },
+    /** it is in your face: a shriek (formant-filtered noise and a detuned saw cluster) */
+    shriek() {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t + 0.02);
+      g.gain.setValueAtTime(0.5, t + 0.6); g.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
+      const n = noise();
+      for (const [f, q] of [[800, 6], [1150, 8], [2900, 10]]) {
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = q;
+        bp.frequency.setValueAtTime(f * 0.8, t); bp.frequency.linearRampToValueAtTime(f * 1.2, t + 0.5);
+        n.connect(bp).connect(g);
+      }
+      for (const f of [310, 329, 466]) {
+        const o = ctx.createOscillator(); o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 1.3, t + 0.5);
+        const og = ctx.createGain(); og.gain.value = 0.12; o.connect(og).connect(g); o.start(t); o.stop(t + 1.7);
+      }
+      out(g); n.start(t); n.stop(t + 1.7);
     },
     /** the torch's slide switch */
     click(onState) {

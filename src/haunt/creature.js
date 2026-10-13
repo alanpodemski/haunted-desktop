@@ -28,7 +28,10 @@ async function loadActor(loader) {
   catch (err) { console.warn('[haunt] creature.glb missing, using the stand-in:', err && err.message); }
   try { const r = await fetch('/models/creature.json'); if (r.ok) meta = await r.json(); } catch {}
   for (const k of Object.keys(DEFAULT_META)) meta[k] = { ...DEFAULT_META[k], ...(meta[k] || {}) };
-  return gltf ? gltfActor(gltf, meta) : standInActor(meta);
+  const actor = gltf ? gltfActor(gltf, meta) : standInActor(meta);
+  // a second copy for photographs, so posing it for a picture never interferes with whatever the real one does
+  actor.another = () => (gltf ? gltfActor(gltf, meta) : standInActor(meta));
+  return actor;
 }
 
 function gltfActor(gltf, meta) {
@@ -142,14 +145,42 @@ const pick = (weights) => {
 };
 
 // ----------------------------------------------------------------------------------------- controller
-export async function createCreature(scene, loader, { flashlight, camera, sound, onEvent } = {}) {
+export async function createCreature(scene, loader, { flashlight, camera, sound, physics, boxes, onEvent, onJumpscare, onBlackout } = {}) {
   const actor = await loadActor(loader);
   const { root, meta } = actor;
   root.visible = false;
   scene.add(root);
+  const ghost = actor.another();
+  ghost.root.visible = false;
+  scene.add(ghost.root);
+
+  // ---- its body in the physics world: a 75 kg capsule. Kinematic (it goes where the event puts it and shoves
+  // boxes aside) except while hunting, when it is dynamic and walks with a limited force, so a heavy barricade
+  // slows it down or stops it until it breaks through.
+  const MASS = 75, DRIVE_FORCE = 650;
+  let body = null, collider = null, dynamic = false;
+  const drive = { x: 0, z: 0, speed: 0 };
+  if (physics) {
+    const { RAPIER, world } = physics;
+    body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -10, 0).lockRotations());
+    collider = world.createCollider(RAPIER.ColliderDesc.capsule(0.6, 0.24).setTranslation(0, 0.86, 0)
+      .setMass(MASS).setFriction(0), body);
+    collider.setEnabled(false);
+  }
+  function setDynamic(on) {
+    if (!body) return;
+    const { RAPIER } = physics;
+    dynamic = on;
+    body.setBodyType(on ? RAPIER.RigidBodyType.Dynamic : RAPIER.RigidBodyType.KinematicPositionBased, true);
+    body.setTranslation({ x: root.position.x, y: 0, z: root.position.z }, true);
+    body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    drive.speed = 0;
+  }
 
   let job = null, jobName = null;
   let nextAt = performance.now() / 1000 + rand(6, 9);
+  let nextHuntAt = performance.now() / 1000 + rand(80, 110);
+  let hunting = false, stunned = false, flashAt = -1e9;
   let last = null, lastRoomRun = -1e9, count = 0;
   const tmp = v3(), head = v3(), chest = v3();
 
@@ -161,7 +192,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     if (!root.visible) return 0;
     actor.headPos(head);
     chest.set(root.position.x, 1.25, root.position.z);
-    let best = 0;
+    let best = performance.now() - flashAt < 300 && inView() ? 1 : 0;
     for (const p of [head, chest]) {
       if (!seenThroughDoor(flashlight.pos, p) || !seenThroughDoor(camera.position, p)) continue;
       best = Math.max(best, flashlight.exposure(p));
@@ -187,6 +218,16 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     }
     lastPhase = ph;
   }
+
+  /** is it on screen and in the line of sight (in the room, or seen through the doorway)? */
+  function inView() {
+    if (!root.visible) return false;
+    actor.headPos(head);
+    if (!seenThroughDoor(camera.position, head)) return false;
+    tmp.copy(head).project(camera);
+    return Math.abs(tmp.x) < 1.05 && Math.abs(tmp.y) < 1.05 && tmp.z < 1;
+  }
+  const distToCamera = () => Math.hypot(root.position.x - camera.position.x, root.position.z - camera.position.z);
 
   // ---- coroutine helpers
   function* wait(sec) { let t = 0; while (t < sec) t += yield; }
@@ -335,6 +376,55 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         yield* travel([[root.position.x, root.position.z], [root.position.x + dir * 0.5, CORRIDOR_LANE_Z], [dir > 0 ? CORRIDOR.x1 - 0.4 : CORRIDOR.x0 + 0.4, CORRIDOR_LANE_Z]], 'run', { startSpeed: 1.5, accel: 18 });
       }
     },
+    /**
+     * The hunt. It comes in through the doorway towards you, but only while it is not lit: in the beam it freezes
+     * mid-step. In the dark (torch off, or flickering) it runs. Boxes in its way are pushed with a limited force;
+     * if they hold, it beats at them. A camera flash in its face drives it back out. If it reaches you, it gets you.
+     */
+    *hunt() {
+      hunting = true; stunned = false;
+      sound && sound.drone(true);
+      flashlight.stutter(0.9);
+      const x = DOOR.cx + rand(-0.1, 0.1), z = ROOM.z0 - 0.45;
+      place(x, z, faceAngle(camera.position.x - x, camera.position.z - z));
+      actor.play('idle', { fade: 0 });
+      setDynamic(true);
+      yield* wait(1.2);
+      let flicker = rand(4, 7), blocked = 0, clip = null;
+      while (true) {
+        const dt = yield;
+        if (stunned) { yield* retreat(); break; }
+        if (distToCamera() < 0.95) { yield* jumpscare(); break; }
+        flicker -= dt;
+        if (flicker < 0) { flashlight.stutter(rand(0.3, 0.7)); flicker = rand(4.5, 9); }
+        actor.setEyeGlow(eyeGlow());
+        if (litness() > 0.18) {
+          // seen: it stops dead, mid-stride
+          drive.speed = 0; actor.setTimeScale(0); blocked = 0;
+          continue;
+        }
+        const dark = !flashlight.on || flashlight.spot.intensity < 12;
+        const want = dark ? 'run' : 'walk';
+        if (clip !== want) { actor.play(want, { fade: 0.25 }); clip = want; }
+        const speed = dark ? meta.run.speed : meta.walk.speed * 2.3;
+        // through the doorway first, then straight at you
+        const tx = root.position.z < ROOM.z0 + 0.4 ? DOOR.cx : camera.position.x;
+        const tz = root.position.z < ROOM.z0 + 0.4 ? ROOM.z0 + 0.7 : camera.position.z - 0.2;
+        const dx = tx - root.position.x, dz = tz - root.position.z, d = Math.hypot(dx, dz) || 1;
+        drive.x = dx / d; drive.z = dz / d; drive.speed = speed;
+        let turn = faceAngle(drive.x, drive.z) - root.rotation.y; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+        root.rotation.y += turn * Math.min(1, 6 * dt);
+        // the gait follows the speed it actually makes against whatever is in the way
+        const v = body ? Math.hypot(body.linvel().x, body.linvel().z) : speed;
+        actor.setTimeScale(Math.max(0.25, v / meta[want].speed));
+        footsteps(v / meta[want].speed);
+        blocked = v < speed * 0.2 ? blocked + dt : Math.max(0, blocked - dt);
+        if (blocked > 0.9 && actor.has('attack')) { yield* bash(); clip = null; blocked = 0; }
+      }
+      hunting = false;
+      sound && sound.drone(false);
+      nextHuntAt = performance.now() / 1000 + rand(100, 160);
+    },
     /** rare: comes through the doorway and runs past you, out of view to the left */
     *intrude() {
       const x0 = CORRIDOR.x0 + 0.6;
@@ -348,6 +438,75 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       sound && sound.sting(0.7);
     },
   };
+
+  /** stuck behind boxes: it beats at them (two blows per attack clip) */
+  function* bash() {
+    drive.speed = 0;
+    const dur = actor.play('attack', { loop: false, fade: 0.15 });
+    const hits = [0.32, 0.62].map((f) => f * dur);
+    let t = 0, h = 0;
+    while (t < dur) {
+      const dt = yield;
+      if (stunned) return;
+      if (litness() > 0.18) { actor.setTimeScale(0); continue; }   // still freezes in the light
+      actor.setTimeScale(1);
+      t += dt;
+      if (h < hits.length && t >= hits[h]) {
+        h++;
+        const fx = Math.sin(root.rotation.y), fz = Math.cos(root.rotation.y);
+        const front = new THREE.Vector3(root.position.x + fx * 0.55, 0, root.position.z + fz * 0.55);
+        const hit = boxes ? boxes.near(front, 0.75) : [];
+        for (const b of hit) {
+          b.body.applyImpulse({ x: fx * 95, y: 35, z: fz * 95 }, true);
+          b.body.applyTorqueImpulse({ x: rand(-6, 6), y: rand(-6, 6), z: rand(-6, 6) }, true);
+        }
+        sound && sound.thud({ pos: front, strength: hit.length ? 1.4 : 0.4, size: 0.9 });
+      }
+    }
+  }
+
+  /** the flash got it: it screams and runs back out into the corridor */
+  function* retreat() {
+    stunned = false;
+    setDynamic(false);
+    yield* screamAtYou();
+    actor.play('run', { fade: 0.15 });
+    const p = root.position;
+    yield* travel([[p.x, p.z], [DOOR.cx, ROOM.z0 + 0.5], [DOOR.cx, CORRIDOR_LANE_Z], [CORRIDOR.x1 - 0.4, CORRIDOR_LANE_Z]], 'run', { startSpeed: 1, accel: 12 });
+  }
+
+  /** it reached you */
+  function* jumpscare() {
+    setDynamic(false);
+    if (collider) collider.setEnabled(false);
+    const fx = camera.position.x, fz = camera.position.z;
+    const fwd = camera.getWorldDirection(new THREE.Vector3()); fwd.y = 0; fwd.normalize();
+    // right in front of you, face to face, screaming
+    place(fx + fwd.x * 0.8, fz + fwd.z * 0.8, faceAngle(-fwd.x, -fwd.z));
+    actor.play(actor.has('scream') ? 'scream' : 'idle', { loop: false, fade: 0, timeScale: 0.9 });
+    actor.update(0.45 / 0.9);                // reared back, about to lunge
+    root.updateMatrixWorld(true);
+    // the scream pose leans far forward: move the whole body so the face ends up just in front of the lens
+    actor.headPos(head);
+    // its lunge then carries the face ~0.6 m forward and down, into the lens
+    const want = camera.position.clone().addScaledVector(camera.getWorldDirection(new THREE.Vector3()), 0.95);
+    want.y += 0.05;
+    root.position.x += want.x - head.x;
+    root.position.z += want.z - head.z;
+    root.position.y = THREE.MathUtils.clamp(want.y - head.y, -0.5, 0.5);
+    root.updateMatrixWorld(true);
+    sound && sound.shriek();
+    actor.headPos(head);
+    flashlight.aimAt(head.clone().add(new THREE.Vector3(0, -0.05, 0)), true);
+    onJumpscare && onJumpscare();
+    yield* wait(0.42);                       // cut to black at the peak of the lunge, before it bends away
+    onBlackout && onBlackout(true);
+    flashlight.toggle(false);
+    root.visible = false; root.position.y = 0;
+    yield* wait(1.8);
+    flashlight.toggle(true);
+    onBlackout && onBlackout(false);
+  }
 
   function eyeGlow() {
     // retro-reflection: bright only when the torch is close to the line of sight and pointed at the face
@@ -374,16 +533,63 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     const w = { dash: 26, crawl: 14, walk: 16, drag: 10, peek: 12, watch: 18, intrude: 6 };
     if (!actor.has('peek')) delete w.peek;
     if (count < 1) { start('dash'); return; }
+    if (now >= nextHuntAt) { start('hunt'); return; }
     if (count < 3 || now - lastRoomRun < 90) delete w.intrude;
     if (last && w[last] && last !== 'dash') w[last] *= 0.3;
     start(pick(w));
   }
 
+  const SPOTS = [
+    // places to stand in a photo it was not in: behind the bed, in the doorway, much too close, the far corner
+    () => [ROOM.x0 + 0.55, -2.3], () => [DOOR.cx + rand(-0.1, 0.1), ROOM.z0 - 0.25],
+    () => [camera.position.x - 0.95, camera.position.z - 1.25], () => [ROOM.x1 - 0.5, ROOM.z0 + 0.5],
+  ];
+
   return {
     actor,
     get busy() { return !!job; },
     get event() { return jobName; },
+    get hunting() { return hunting; },
+    get lit() { return litness(); },
     trigger(name) { if (job) return false; return start(name); },
+    /** the camera flashed: anything in view counts as caught; during a hunt it is driven back */
+    onFlash() {
+      flashAt = performance.now();
+      if (hunting && inView() && distToCamera() < 7) stunned = true;
+    },
+    /** put it somewhere in the room for one rendered frame (the photo); returns a function that removes it */
+    stageForPhoto() {
+      if (hunting) return null;
+      const [x, z] = SPOTS[Math.floor(Math.random() * SPOTS.length)]();
+      ghost.root.position.set(x, 0, z);
+      ghost.root.rotation.set(0, faceAngle(camera.position.x - x, camera.position.z - z), 0);
+      ghost.play('idle', { fade: 0 });
+      ghost.update(rand(0.5, 3.5));
+      ghost.root.visible = true;
+      ghost.root.updateMatrixWorld(true);
+      return () => { ghost.root.visible = false; };
+    },
+    /** before each physics step: kinematic follow, or the hunting drive */
+    beforeStep(dt) {
+      if (!body) return;
+      const show = root.visible && !!job;
+      if (collider.isEnabled() !== show) collider.setEnabled(show);
+      if (!show) return;
+      if (!dynamic) {
+        body.setNextKinematicTranslation({ x: root.position.x, y: 0, z: root.position.z });
+        return;
+      }
+      const lv = body.linvel();
+      let jx = MASS * (drive.x * drive.speed - lv.x), jz = MASS * (drive.z * drive.speed - lv.z);
+      const j = Math.hypot(jx, jz), cap = DRIVE_FORCE * dt;
+      if (j > cap) { jx *= cap / j; jz *= cap / j; }
+      body.applyImpulse({ x: jx, y: 0, z: jz }, true);
+    },
+    afterStep() {
+      if (!body || !dynamic) return;
+      const t = body.translation();
+      root.position.x = t.x; root.position.z = t.z;
+    },
     update(dt) {
       actor.update(dt);
       const now = performance.now() / 1000;
@@ -392,6 +598,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         const r = job.next(dt);
         if (r.done) {
           job = null; jobName = null; root.visible = false; actor.setEyeGlow(0);
+          if (dynamic) setDynamic(false);
           nextAt = now + rand(14, 38);
         }
       }

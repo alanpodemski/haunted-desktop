@@ -1,4 +1,5 @@
-// The live wallpaper: renderer, fixed camera, the room, the torch, the dust and the creature.
+// The live wallpaper: renderer, fixed camera, the room, the torch, the dust, the physics (file boxes), the camera
+// flash and the creature.
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -9,8 +10,11 @@ import { createFlashlight } from './flashlight.js';
 import { createDust } from './dust.js';
 import { createPost } from './post.js';
 import { createCreature } from './creature.js';
+import { createPhysics } from './physics.js';
+import { createBoxes } from './boxes.js';
+import { createPhoto } from './photo.js';
 
-export async function createHaunt(canvas, { sound, quality = 1 } = {}) {
+export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   // Render at CSS-pixel resolution (1×) by default: the scene is dark and grainy, so 2× Retina pixels are
   // invisible here but cost 4× the GPU work. ?hq goes back to the full device resolution.
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -63,7 +67,22 @@ export async function createHaunt(canvas, { sound, quality = 1 } = {}) {
   dust.setPixelRatio(renderer.getPixelRatio());
   const post = createPost(renderer, scene, camera, flashlight);
 
-  const creature = await createCreature(scene, loader, { flashlight, camera, sound });
+  const physics = await createPhysics(room.root);
+  const boxes = createBoxes({ scene, physics, camera, desk, sound });
+
+  // camera shake (the jumpscare): a decaying random rotation around the fixed view
+  const baseQuat = camera.quaternion.clone();
+  let shake = 0;
+  const creature = await createCreature(scene, loader, {
+    flashlight, camera, sound, physics, boxes,
+    onJumpscare() {
+      shake = 1;
+      boxes.blast(camera.position, 60, 4);
+      desk.scatter(innerWidth / 2, innerHeight * 0.45, 1.2);
+    },
+    onBlackout(on) { post.sensor.uniforms.uFade.value = on ? 1 : 0; },
+  });
+  const photo = createPhoto({ renderer, scene, camera, post, creature, desk, sound });
 
   function resize() {
     renderer.setPixelRatio(dpr());
@@ -104,33 +123,55 @@ export async function createHaunt(canvas, { sound, quality = 1 } = {}) {
 
   let last = performance.now(), time = 0, paused = false, lastInput = -1e9;
   addEventListener('pointermove', () => { lastInput = performance.now(); }, { passive: true });
+  const isMoving = () => {
+    if (boxes.holding) return true;
+    for (const b of boxes.boxes.values()) if (!b.body.isSleeping()) return true;
+    return false;
+  };
   function frame(now) {
     requestAnimationFrame(frame);
-    const active = now - lastInput < 1500 || creature.busy;
-    const minMs = active ? 15 : 31;
-    if (now - last < minMs) return;
+    const active = now - lastInput < 1500 || creature.busy || shake > 0 || isMoving();
+    if (now - last < (active ? 15 : 31)) return;
     let dt = (now - last) / 1000; last = now;
     if (!(dt > 0)) dt = 1 / 60;
     dt = Math.min(dt, 1 / 20);
     if (paused) return;
-    time += dt;
-    flashlight.update(dt);
-    creature.update(dt);
-    if (creature.busy || creature.actor.root.visible) leak.shadow.needsUpdate = true;
-    dust.update(dt, camera);
-    if (sound) sound.setListener(camera);
+    simulate(dt);
     const q = gpuBegin();
-    post.render(time);
+    photo.render(time);
     gpuEnd(q);
   }
   requestAnimationFrame(frame);
 
+  /** one frame of the world without drawing (scripted tests drive it through advance()) */
+  function simulate(dt) {
+    time += dt;
+    flashlight.update(dt);
+    creature.update(dt);
+    physics.step(dt, (h) => { boxes.beforeStep(h); creature.beforeStep(h); });
+    creature.afterStep();
+    boxes.sync();
+    if (creature.busy || creature.actor.root.visible || isMoving()) leak.shadow.needsUpdate = true;
+    if (shake > 0) {
+      shake = Math.max(0, shake - dt * 1.4);
+      const a = 0.035 * shake * shake;
+      camera.quaternion.copy(baseQuat).multiply(new THREE.Quaternion().setFromEuler(
+        new THREE.Euler((Math.random() - 0.5) * a, (Math.random() - 0.5) * a, (Math.random() - 0.5) * a * 0.5)));
+      if (shake === 0) camera.quaternion.copy(baseQuat);
+      camera.updateMatrixWorld();
+    }
+    dust.update(dt, camera);
+    if (sound) sound.setListener(camera);
+  }
+
   return {
-    renderer, scene, camera, flashlight, creature, room, post, leak,
+    renderer, scene, camera, flashlight, creature, room, post, leak, physics, boxes, photo,
     get renderScale() { return renderScale; },
     setPointer(clientX, clientY) {
       flashlight.setPointer((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
     },
     pause(v = !paused) { paused = v; return paused; },
+    /** run the world forward by `seconds` at 60 Hz (for tests and recordings), then draw one frame */
+    advance(seconds) { for (let t = 0; t < seconds; t += 1 / 60) simulate(1 / 60); photo.render(time); },
   };
 }

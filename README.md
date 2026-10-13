@@ -1,10 +1,11 @@
 # Haunted Desktop
 
-Your wallpaper is a dark room now. You have a flashlight. Something lives in the corridor.
+Your wallpaper is a dark room now. You have a flashlight, a camera and your files. Something lives in the corridor.
 
 It runs in the browser on a fake macOS desktop. The wallpaper is a live three.js scene: an abandoned room seen from
 one fixed spot, with an open doorway onto a corridor. The only light is the flashlight, and it points wherever your
 cursor is. Every so often something goes past the doorway. Sometimes it stops and waits in the dark until you find it.
+And sometimes it comes in. It only moves while it is not in your light.
 
 **Play it: https://deskhaunt.vercel.app**
 
@@ -15,13 +16,32 @@ cursor is. Every so often something goes past the doorway. Sometimes it stops an
 | Input | What it does |
 |---|---|
 | Mouse | Aim the flashlight |
+| Drag a file onto the floor | It becomes a moving box in the room. Barricade the door. |
+| Drag a box | Push or carry it (heavy ones only slide) |
+| Double-click a box | The file goes back to the desktop |
+| Space | Camera flash. The photo lands on your desktop; double-click it to look. |
 | F | Flashlight on or off |
 | Click anywhere | Turn the sound on |
 | N | Sound on or off |
-| Space | Pause |
+| P | Pause |
+| R | Tidy the icons |
+| H | Make it come for you now |
 | 1 to 7 | Make it happen now: dash, crawl, walk, drag, watch, intrude, peek (for recording) |
 
 URL options: `?nohud` hides the hint, `?hq` renders at full Retina resolution, `?low` renders below CSS resolution.
+
+## How to survive
+
+Every couple of minutes it comes through the doorway for you. In the beam it freezes mid-step. While the beam is
+somewhere else it walks; in the dark, or while the old torch flickers, it runs. The catch: the flashlight follows your
+cursor, so every file you drag to build a barricade takes the light off it.
+
+- **Barricade.** Boxes are real rigid bodies. A file's size sets its box's size and mass, from a 1 kg box for a text
+  file to an 80 kg one for a disk. It pushes with a limited force, so a heavy pile stops it, and then it beats at it.
+- **Flash.** A flash in its face drives it back out. The flash needs four seconds to recharge.
+- If it reaches you, you will know.
+
+The camera has another use. Take a few photos of the empty room and look at them.
 
 ## What it does
 
@@ -31,6 +51,11 @@ URL options: `?nohud` hides the hint, `?hq` renders at full Retina resolution, `
   dimly fills a real room around a torch beam.
 - **Air.** Dust motes only show where the beam crosses them, brightest when they are between you and the light.
   A ray-marched haze pass adds the faint visible cone, with the shadow map so furniture casts shadows into it.
+- **Physics.** Rapier 3D: the room's walls and big furniture are static colliders, the boxes dynamic bodies with
+  cardboard-on-wood friction, and the creature a 75 kg capsule that walks with a capped force. Your hand is a spring
+  with a 380 N limit. Impacts make a thump scaled by the contact force.
+- **Photos.** The flash is a short, bright light at the lens. The frame is saved as a JPEG with a date stamp and shown
+  in a Quick Look style viewer. What it sometimes shows is posed for that one render only, never the live view.
 - **The thing in the corridor.** Seven events: it sprints past, scuttles past on all fours, shuffles past slowly,
   drags itself along the floor, stands in the doorway in the dark, or (rarely) comes into the room. If the beam lands
   on it, it turns to you, screams and runs. Its ground speed comes from each animation's own root motion, so its
@@ -52,8 +77,8 @@ Then open http://localhost:5175.
 
 ## How it's built
 
-- `src/haunt/`: the three.js scene (`scene.js`), flashlight, dust, haze, post-processing, the creature's events and
-  the sound. `layout.js` holds the room's dimensions, and `SPEC.md` the contract the assets follow.
+- `src/haunt/`: the three.js scene (`scene.js`), flashlight, dust, haze, post-processing, physics and boxes, the
+  camera, the creature's events and hunt, and the sound. `layout.js` holds the room's dimensions, and `SPEC.md` the contract the assets follow.
 - `src/desktop/`: the fake macOS desktop in plain DOM and CSS, shared with Desktop Roomba.
 - `blender/room.py` and `room_tex.py`: build the room, corridor and props procedurally, generate every texture with
   numpy (nothing downloaded), bake ambient occlusion and export `public/models/room.glb`.

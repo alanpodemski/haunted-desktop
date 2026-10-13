@@ -15,12 +15,20 @@
       padding: 8px 12px; border-radius: 999px; background: rgba(0,0,0,.35); backdrop-filter: blur(8px);
       transition: opacity 1.2s; }
     #hint.gone { opacity: 0; }
+    /* Quick Look style photo viewer */
+    .ql-window { position: fixed; z-index: 20; left: 50%; top: 50%; translate: -50% -52%; width: min(78vw, 1000px);
+      border-radius: 14px; overflow: hidden; background: rgba(30,30,32,.82); backdrop-filter: blur(30px) saturate(1.4);
+      box-shadow: 0 0 0 .5px rgba(255,255,255,.18), 0 30px 80px rgba(0,0,0,.65); }
+    .ql-bar { height: 38px; display: flex; align-items: center; justify-content: center; position: relative;
+      font: 600 13px -apple-system, system-ui, sans-serif; color: rgba(255,255,255,.85); }
+    .ql-close { position: absolute; left: 14px; width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; cursor: default; }
+    .ql-img { display: block; width: 100%; height: auto; }
   </style>
 </head>
 <body>
   <canvas id="scene"></canvas>
   <div id="desktop"></div>
-  <div id="hint">move the mouse · F flashlight · click for sound</div>
+  <div id="hint">move the mouse to aim · drag files onto the floor to barricade the door · space: flash · click for sound</div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

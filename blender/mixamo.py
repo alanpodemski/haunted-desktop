@@ -24,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SRC = os.path.join(ROOT, 'assets', 'mixamo')
 OUT = os.path.join(ROOT, 'public', 'models')
-CLIPS = ['run', 'crawl', 'walk', 'drag', 'idle', 'scream', 'peek', 'flee']
+CLIPS = ['run', 'crawl', 'walk', 'drag', 'idle', 'scream', 'attack', 'peek', 'flee']
 GAITS = {'run', 'crawl', 'walk', 'drag'}
 
 

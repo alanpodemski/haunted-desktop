@@ -389,7 +389,7 @@ export async function createDesktop(root, opts = {}) {
       node, w: iconSize, h: iconSize,
       // Finder position (centre of the icon) in the scanned display's coordinates, if known.
       finderPos: item.pos && Number.isFinite(item.pos.x) ? { x: item.pos.x, y: item.pos.y } : null,
-      index,
+      index, iconSrc: img.src,
       x: 0, y: 0, angle: 0, moved: false,
     };
     icons.set(item.id, rec);
@@ -477,7 +477,7 @@ export async function createDesktop(root, opts = {}) {
   placeFromFinder();
 
   // ------------------------------------------------------------ selection + drag
-  const cbs = { dragStart: [], drag: [], dragEnd: [], resize: [] };
+  const cbs = { dragStart: [], drag: [], dragEnd: [], resize: [], open: [] };
   let selected = null;
   const select = (rec) => {
     if (selected && selected !== rec) selected.node.classList.remove('dk-selected');
@@ -504,6 +504,7 @@ export async function createDesktop(root, opts = {}) {
     const startX = e.clientX, startY = e.clientY;
     let dragging = false;
     let grabDX = 0, grabDY = 0;
+    let lastX = startX, lastY = startY;
     // Capture keeps events coming even when the pointer outruns the icon or crosses the robot's
     // canvas. The node must not be moved in the DOM while it holds capture: re-inserting it
     // (appendChild to raise it) silently releases capture — that was why drags died after one move.
@@ -520,6 +521,7 @@ export async function createDesktop(root, opts = {}) {
         node.style.zIndex = String(1000 + ++zTop); // raise without touching the DOM order
         for (const cb of cbs.dragStart) cb(rec.id);
       }
+      lastX = ev.clientX; lastY = ev.clientY;
       rec.x = clamp(ev.clientX + grabDX, 0, W);
       rec.y = clamp(ev.clientY + grabDY, menubarH, H);
       applyTransform(rec);
@@ -539,6 +541,12 @@ export async function createDesktop(root, opts = {}) {
       if (!dragging) return;
       node.classList.remove('dk-dragging');
       node.style.zIndex = String(++zTop); // the icon you moved last stays on top, as in Finder
+      // a live wallpaper may take the file (dropped into the scene); the icon then leaves the desktop
+      if (opts.onDrop && opts.onDrop(publicIcon(rec), lastX, lastY)) {
+        setHidden(rec, true);
+        for (const cb of cbs.dragEnd) cb(rec.id);
+        return;
+      }
       if ((view.arrangeBy || 'grid') === 'grid') {
         const s = snap(rec);
         rec.x = s.x; rec.y = s.y;
@@ -567,6 +575,30 @@ export async function createDesktop(root, opts = {}) {
     e.preventDefault();
     select(rec);
     startPress(rec, e);
+  });
+
+  const publicIcon = (r) => ({
+    id: r.id, x: r.x, y: r.y, w: r.w, h: r.h, massKg: r.massKg, name: r.name, kind: r.kind,
+    angle: r.angle, bytes: r.bytes, icon: r.iconSrc, hidden: !!r.hidden,
+  });
+  function setHidden(rec, hidden) {
+    rec.hidden = hidden;
+    rec.node.style.display = hidden ? 'none' : '';
+    if (hidden && selected === rec) select(null);
+  }
+  /** put an icon back on the desktop at the free grid cell nearest to (x, y) */
+  function returnIcon(rec, x = W - GRID.rightInset, y = GRID.firstRowY) {
+    setHidden(rec, false);
+    rec.x = x; rec.y = y; rec.angle = 0;
+    const s = snap(rec);
+    rec.x = s.x; rec.y = s.y;
+    rec.node.classList.remove('dk-moved');
+    applyTransform(rec);
+  }
+  iconsLayer.addEventListener('dblclick', (e) => {
+    const node = e.target.closest('.dk-icon');
+    const rec = node && icons.get(node.dataset.id);
+    if (rec) for (const cb of cbs.open) cb(publicIcon(rec));
   });
 
   // ------------------------------------------------------------ Dock geometry + robot dock
@@ -635,6 +667,35 @@ export async function createDesktop(root, opts = {}) {
     onIconDrag(cb) { cbs.drag.push(cb); return () => cbs.drag.splice(cbs.drag.indexOf(cb), 1); },
     onIconDragEnd(cb) { cbs.dragEnd.push(cb); return () => cbs.dragEnd.splice(cbs.dragEnd.indexOf(cb), 1); },
     onResize(cb) { cbs.resize.push(cb); return () => cbs.resize.splice(cbs.resize.indexOf(cb), 1); },
+    /** double-click on an icon */
+    onIconOpen(cb) { cbs.open.push(cb); return () => cbs.open.splice(cbs.open.indexOf(cb), 1); },
+    getIcon(id) { const r = icons.get(id); return r ? publicIcon(r) : null; },
+    setIconHidden(id, hidden) { const r = icons.get(id); if (r) setHidden(r, hidden); },
+    /** bring a hidden icon back, snapped to the free cell nearest to (x, y) */
+    returnIcon(id, x, y) { const r = icons.get(id); if (r) returnIcon(r, x, y); },
+    /** add a new item (a photo just taken) at the next free grid cell; returns its id */
+    addIcon(item) {
+      const rec = buildIcon(item, icons.size);
+      rec.x = W - GRID.rightInset; rec.y = GRID.firstRowY;
+      const s = snap(rec);
+      rec.x = s.x; rec.y = s.y; applyTransform(rec);
+      rec.node.style.zIndex = String(++zTop);
+      return rec.id;
+    },
+    /** throw every icon a little: a shockwave from (cx, cy) in page px, decaying with distance */
+    scatter(cx = W / 2, cy = H / 2, strength = 1) {
+      for (const r of icons.values()) {
+        if (r.hidden || r.node.classList.contains('dk-dragging')) continue;
+        const dx = r.x - cx, dy = r.y - cy, d = Math.hypot(dx, dy) + 40;
+        const push = strength * 260 * Math.min(1, 300 / d) * (0.6 + Math.random() * 0.8);
+        r.x = clamp(r.x + (dx / d) * push + (Math.random() - 0.5) * 60 * strength, iconSize / 2, W - iconSize / 2);
+        r.y = clamp(r.y + (dy / d) * push + (Math.random() - 0.5) * 60 * strength, menubarH + iconSize / 2, yMaxCentre());
+        r.angle = (Math.random() - 0.5) * 0.9 * strength;
+        r.moved = true; r.node.classList.add('dk-moved', 'dk-thrown');
+        applyTransform(r);
+      }
+      setTimeout(() => { for (const r of icons.values()) r.node.classList.remove('dk-thrown'); }, 700);
+    },
     setClock,
     /** Element between the wallpaper and the icons for things lying on the floor (cake smear).
      *  Full-page, position:absolute, pointer-events:none; put a canvas inside it. */
