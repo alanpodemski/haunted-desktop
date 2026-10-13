@@ -1,0 +1,28 @@
+{
+  "run": {
+    "duration": 0.8,
+    "speed": 3.095,
+    "rootMotion": true
+  },
+  "crawl": {
+    "duration": 0.6333333333333333,
+    "speed": 2.297,
+    "rootMotion": true
+  },
+  "walk": {
+    "duration": 4.033333333333333,
+    "speed": 0.342,
+    "rootMotion": true
+  },
+  "drag": {
+    "duration": 5.133333333333334,
+    "speed": 0.433,
+    "rootMotion": true
+  },
+  "idle": {
+    "duration": 4.266666666666667
+  },
+  "scream": {
+    "duration": 2.8
+  }
+}

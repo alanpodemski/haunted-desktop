@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>haunted desktop</title>
+  <link rel="stylesheet" href="/src/desktop/desktop.css" />
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    /* the live wallpaper: the three.js room renders under the desktop's icons, menu bar and Dock */
+    #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+    #desktop { position: fixed; inset: 0; z-index: 1; }
+    #hint { position: fixed; left: 50%; bottom: 96px; translate: -50% 0; z-index: 5; pointer-events: none;
+      font: 500 12px/1 -apple-system, system-ui, sans-serif; letter-spacing: .02em; color: rgba(255,255,255,.55);
+      padding: 8px 12px; border-radius: 999px; background: rgba(0,0,0,.35); backdrop-filter: blur(8px);
+      transition: opacity 1.2s; }
+    #hint.gone { opacity: 0; }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="desktop"></div>
+  <div id="hint">move the mouse · F flashlight · click for sound</div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

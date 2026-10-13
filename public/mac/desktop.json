@@ -1,0 +1,309 @@
+{
+  "display": {
+    "width": 1728,
+    "height": 1117
+  },
+  "positionsFromFinder": true,
+  "view": {
+    "iconSize": 48,
+    "gridSpacing": 32,
+    "textSize": 10,
+    "labelOnBottom": true,
+    "arrangeBy": "grid",
+    "showItemInfo": false,
+    "showIconPreview": true,
+    "showHardDrives": true,
+    "showExternalDrives": true
+  },
+  "items": [
+    {
+      "id": "macintosh-hd",
+      "name": "Macintosh HD",
+      "path": "/",
+      "kind": "volume",
+      "ext": "",
+      "isFolder": true,
+      "bytes": 18576642048,
+      "icloud": false,
+      "finderKind": "volume",
+      "pos": {
+        "x": 1688,
+        "y": 69
+      },
+      "icon": "/mac/icons/desk-macintosh-hd.png"
+    },
+    {
+      "id": "hallway-recordings",
+      "name": "Hallway Recordings",
+      "path": "/Users/demo/Desktop/Hallway Recordings",
+      "kind": "folder",
+      "ext": "",
+      "isFolder": true,
+      "bytes": 6660000000,
+      "icloud": false,
+      "finderKind": "folder",
+      "pos": {
+        "x": 1688,
+        "y": 157
+      },
+      "icon": "/mac/icons/desk-hallway-recordings.png"
+    },
+    {
+      "id": "do-not-open",
+      "name": "DO NOT OPEN",
+      "path": "/Users/demo/Desktop/DO NOT OPEN",
+      "kind": "folder",
+      "ext": "",
+      "isFolder": true,
+      "bytes": 666000000,
+      "icloud": false,
+      "finderKind": "folder",
+      "pos": {
+        "x": 1688,
+        "y": 245
+      },
+      "icon": "/mac/icons/desk-do-not-open.png"
+    },
+    {
+      "id": "costume-ideas",
+      "name": "Costume Ideas",
+      "path": "/Users/demo/Desktop/Costume Ideas",
+      "kind": "folder",
+      "ext": "",
+      "isFolder": true,
+      "bytes": 131000000,
+      "icloud": false,
+      "finderKind": "folder",
+      "pos": {
+        "x": 1688,
+        "y": 333
+      },
+      "icon": "/mac/icons/desk-costume-ideas.png"
+    },
+    {
+      "id": "untitled-folder",
+      "name": "untitled folder",
+      "path": "/Users/demo/Desktop/untitled folder",
+      "kind": "folder",
+      "ext": "",
+      "isFolder": true,
+      "bytes": 0,
+      "icloud": false,
+      "finderKind": "folder",
+      "pos": {
+        "x": 1688,
+        "y": 421
+      },
+      "icon": "/mac/icons/desk-untitled-folder.png"
+    },
+    {
+      "id": "pumpkin-stencils-zip",
+      "name": "pumpkin_stencils.zip",
+      "path": "/Users/demo/Desktop/pumpkin_stencils.zip",
+      "kind": "zip",
+      "ext": "zip",
+      "isFolder": false,
+      "bytes": 31000000,
+      "icloud": false,
+      "finderKind": "zip",
+      "pos": {
+        "x": 1688,
+        "y": 509
+      },
+      "icon": "/mac/icons/desk-pumpkin-stencils-zip.png"
+    },
+    {
+      "id": "img-0666-jpeg",
+      "name": "IMG_0666.jpeg",
+      "path": "/Users/demo/Desktop/IMG_0666.jpeg",
+      "kind": "jpeg",
+      "ext": "jpeg",
+      "isFolder": false,
+      "bytes": 3310000,
+      "icloud": false,
+      "finderKind": "jpeg",
+      "pos": {
+        "x": 1616,
+        "y": 69
+      },
+      "icon": "/mac/icons/desk-img-0666-jpeg.png"
+    },
+    {
+      "id": "screenshot-2026-10-31-at-03-33-03-png",
+      "name": "Screenshot 2026-10-31 at 03.33.03.png",
+      "path": "/Users/demo/Desktop/Screenshot 2026-10-31 at 03.33.03.png",
+      "kind": "png",
+      "ext": "png",
+      "isFolder": false,
+      "bytes": 1480000,
+      "icloud": false,
+      "finderKind": "png",
+      "pos": {
+        "x": 1616,
+        "y": 157
+      },
+      "icon": "/mac/icons/desk-screenshot-2026-10-31-at-03-33-03-png.png"
+    },
+    {
+      "id": "house-floorplan-1987-pdf",
+      "name": "house_floorplan_1987.pdf",
+      "path": "/Users/demo/Desktop/house_floorplan_1987.pdf",
+      "kind": "pdf",
+      "ext": "pdf",
+      "isFolder": false,
+      "bytes": 184000,
+      "icloud": false,
+      "finderKind": "pdf",
+      "pos": {
+        "x": 1616,
+        "y": 245
+      },
+      "icon": "/mac/icons/desk-house-floorplan-1987-pdf.png"
+    },
+    {
+      "id": "evp-session-04-m4a",
+      "name": "EVP_session_04.m4a",
+      "path": "/Users/demo/Desktop/EVP_session_04.m4a",
+      "kind": "m4a",
+      "ext": "m4a",
+      "isFolder": false,
+      "bytes": 13000000,
+      "icloud": false,
+      "finderKind": "m4a",
+      "pos": {
+        "x": 1616,
+        "y": 333
+      },
+      "icon": "/mac/icons/desk-evp-session-04-m4a.png"
+    },
+    {
+      "id": "night-cam-02-mov",
+      "name": "night_cam_02.mov",
+      "path": "/Users/demo/Desktop/night_cam_02.mov",
+      "kind": "mov",
+      "ext": "mov",
+      "isFolder": false,
+      "bytes": 1240000000,
+      "icloud": false,
+      "finderKind": "mov",
+      "pos": {
+        "x": 1616,
+        "y": 421
+      },
+      "icon": "/mac/icons/desk-night-cam-02-mov.png"
+    },
+    {
+      "id": "it-comes-at-3am-txt",
+      "name": "it_comes_at_3am.txt",
+      "path": "/Users/demo/Desktop/it_comes_at_3am.txt",
+      "kind": "txt",
+      "ext": "txt",
+      "isFolder": false,
+      "bytes": 2100,
+      "icloud": false,
+      "finderKind": "txt",
+      "pos": {
+        "x": 1544,
+        "y": 69
+      },
+      "icon": "/mac/icons/desk-it-comes-at-3am-txt.png"
+    },
+    {
+      "id": "candy-inventory-csv",
+      "name": "candy_inventory.csv",
+      "path": "/Users/demo/Desktop/candy_inventory.csv",
+      "kind": "csv",
+      "ext": "csv",
+      "isFolder": false,
+      "bytes": 46000,
+      "icloud": false,
+      "finderKind": "csv",
+      "pos": {
+        "x": 1544,
+        "y": 157
+      },
+      "icon": "/mac/icons/desk-candy-inventory-csv.png"
+    },
+    {
+      "id": "lease-signed-in-red-pdf",
+      "name": "lease_SIGNED_in_red.pdf",
+      "path": "/Users/demo/Desktop/lease_SIGNED_in_red.pdf",
+      "kind": "pdf",
+      "ext": "pdf",
+      "isFolder": false,
+      "bytes": 96000,
+      "icloud": false,
+      "finderKind": "pdf",
+      "pos": {
+        "x": 1544,
+        "y": 245
+      },
+      "icon": "/mac/icons/desk-lease-signed-in-red-pdf.png"
+    },
+    {
+      "id": "party-playlist",
+      "name": "Party Playlist",
+      "path": "/Users/demo/Desktop/Party Playlist",
+      "kind": "folder",
+      "ext": "",
+      "isFolder": true,
+      "bytes": 58000000,
+      "icloud": false,
+      "finderKind": "folder",
+      "pos": {
+        "x": 1544,
+        "y": 333
+      },
+      "icon": "/mac/icons/desk-party-playlist.png"
+    },
+    {
+      "id": "dont-turn-around-jpeg",
+      "name": "dont_turn_around.jpeg",
+      "path": "/Users/demo/Desktop/dont_turn_around.jpeg",
+      "kind": "jpeg",
+      "ext": "jpeg",
+      "isFolder": false,
+      "bytes": 2400000,
+      "icloud": false,
+      "finderKind": "jpeg",
+      "pos": {
+        "x": 1270,
+        "y": 860
+      },
+      "icon": "/mac/icons/desk-dont-turn-around-jpeg.png"
+    },
+    {
+      "id": "final-final-scary-psd",
+      "name": "final_FINAL_scary.psd",
+      "path": "/Users/demo/Desktop/final_FINAL_scary.psd",
+      "kind": "psd",
+      "ext": "psd",
+      "isFolder": false,
+      "bytes": 188000000,
+      "icloud": false,
+      "finderKind": "psd",
+      "pos": {
+        "x": 1420,
+        "y": 560
+      },
+      "icon": "/mac/icons/desk-final-final-scary-psd.png"
+    },
+    {
+      "id": "exorcism-checklist-md",
+      "name": "exorcism_checklist.md",
+      "path": "/Users/demo/Desktop/exorcism_checklist.md",
+      "kind": "md",
+      "ext": "md",
+      "isFolder": false,
+      "bytes": 1300,
+      "icloud": false,
+      "finderKind": "md",
+      "pos": {
+        "x": 250,
+        "y": 830
+      },
+      "icon": "/mac/icons/desk-exorcism-checklist-md.png"
+    }
+  ],
+  "fake": true
+}
