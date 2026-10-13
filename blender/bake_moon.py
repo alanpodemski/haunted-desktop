@@ -30,6 +30,7 @@ from mathutils import Vector
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from common import MODELS, link, _enable_gpu  # noqa: E402
+import room_tex as RT  # noqa: E402
 
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 
@@ -45,6 +46,7 @@ BLEND = os.path.join(TEXDIR, "hallway_build.blend")
 RAW = os.path.join(TEXDIR, "hallway_moon_raw.exr")
 OUT = os.path.join(MODELS, "hallway_moon.png")
 PREVIEW = os.path.join(HERE, "hallway_preview_moonbake.png")
+BLUR = 1.0                   # denoise blur sigma (texels at 4096; scaled with --res)
 PEAK = 0.85                  # brightest moon patches land here (linear, before sRGB encode)
 
 MOON_SRGB = (0x9f, 0xb4, 0xe6)
@@ -116,11 +118,7 @@ def bake():
     c.max_bounces, c.diffuse_bounces, c.glossy_bounces, c.transmission_bounces = 6, 3, 1, 2
     c.transparent_max_bounces = 16
     c.sample_clamp_direct, c.sample_clamp_indirect = 0.0, 0.3
-    world = bpy.data.worlds.new("MoonBakeWorld")
-    world.color = (0, 0, 0)
-    if world.node_tree and "Background" in world.node_tree.nodes:
-        world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.0
-    scene.world = world
+    scene.world = None                      # no sky light: the moon spots are the only source
 
     targets = []
     for o in bpy.data.objects:
@@ -166,6 +164,11 @@ def encode():
     a = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)
     rgb = a[..., :3].astype(np.float64)
     bpy.data.images.remove(img)
+    # light denoise: sigma ~1 texel (~7 mm). Islands are >= 6 px apart and the 12 px EXTEND margin fills the gaps,
+    # so this does not mix neighbouring islands; the moon's penumbrae are many texels wide, so they stay put.
+    for k in range(3):
+        rgb[..., k] = RT.blur(rgb[..., k], BLUR * w / 4096)
+    rgb = np.maximum(rgb, 0.0)
     lum = rgb @ np.array([0.2126, 0.7152, 0.0722])
     lit = lum[lum > 1e-4]
     scale = float(np.percentile(lit, 99.7)) / PEAK
@@ -220,9 +223,7 @@ def preview():
                     p.material_index = 0
             else:
                 o.hide_render = True
-    world = bpy.data.worlds.new("Black")
-    world.color = (0, 0, 0)
-    scene.world = world
+    scene.world = None
     cd = bpy.data.cameras.new("MoonCam")
     cd.sensor_fit = "VERTICAL"
     cd.angle_y = math.radians(50)

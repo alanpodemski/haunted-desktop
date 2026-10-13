@@ -202,7 +202,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   let items = null;                           // candles, flares, music boxes (set after creation)
   let baitBox = null, baitSeen = new Map();   // box id -> when it was first seen lying in the corridor
   const taken = [];                            // files it carried off, and when they come back
-  let last = null, count = 0, lastScare = performance.now() / 1000;
+  let last = null, count = 0, lastScare = performance.now() / 1000, voiceIn = rand(12, 20);
   const tmp = v3(), head = v3(), chest = v3();
 
   const faceAngle = (dx, dz) => Math.atan2(dx, dz);   // model faces +Z
@@ -368,6 +368,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   function* roomToRoom(a, b, clip, speed, { flash = false } = {}) {
     place(a.inside.x, a.inside.z, faceAngle(a.into.x, a.into.z));
     actor.play(clip, { fade: 0 });
+    if (clip === 'walk' && Math.random() < 0.4 && sound && sound.voice) sound.voice('moan', { pos: a.inside.clone().setY(1.6), gain: 0.7, occluded: true });
     const path = [...exitPath(a), ...enterPath(b)];
     let flashed = !flash;
     const ok = yield* travelWatchful(path, clip, speed, () => litness() > 0.2, () => {
@@ -475,9 +476,15 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       let grace = 0;
       let flicker = rand(4, 7), blocked = 0, clip = null, detour = 0, detourSide = 1;
       let huntTime = 0, best = Infinity, sinceBest = 0;
+      // you hear it before you see it: wet, ragged breathing that comes with it
+      const breath = sound && sound.voice && sound.voice('breath_close', { pos: root.position.clone().setY(1.6), loop: true, gain: 1.1, fadeIn: 1.5 });
+      let growlIn = rand(4, 9);
       while (true) {
         const dt = yield;
         huntTime += dt;
+        if (breath) breath.setPos(actor.headPos(head));
+        growlIn -= dt;
+        if (growlIn < 0 && sound && sound.voice) { sound.voice('growl', { pos: actor.headPos(head).clone(), gain: 0.8 }); growlIn = rand(5, 11); }
         // never stuck for ever: no progress towards you for 8 s (or 70 s in all) and it goes back to its room
         const dc = distToCamera();
         if (dc < best - 0.25) { best = dc; sinceBest = 0; } else if (!building()) sinceBest += dt;
@@ -549,6 +556,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         }
       }
       hunting = false;
+      if (breath) breath.stop(1.2);
       sound && sound.drone(false);
       nextHuntAt = performance.now() / 1000 + rand(100, 160);
     },
@@ -638,6 +646,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     stunned = false;
     drive.speed = 0; drive.force = WALK_FORCE;
     yield* screamAtYou();
+    sound && sound.voice && sound.voice('scream_far', { pos: root.position.clone().setY(1.6), gain: 0.9 });
     actor.play('run', { fade: 0.15 });
     const p = root.position;
     // into the nearest room that is not behind you
@@ -788,6 +797,19 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
           const ready = lying.find((b) => baitSeen.get(b.id) <= now);
           if (ready) { baitBox = ready; baitSeen.delete(ready.id); start('fetch'); }
         }
+      }
+      // the house is never quite silent: moans behind walls, a breath from a far room, rarely a child's giggle, and if
+      // you sit in the dark, a whisper right next to you
+      voiceIn -= dt;
+      if (voiceIn < 0 && !hunting && sound && sound.voice) {
+        voiceIn = rand(22, 55);
+        const r = Math.random();
+        const d = pickDoor((x) => x.door.z < -3);
+        if (!flashlight.on && r < 0.35) sound.voice(Math.random() < 0.5 ? 'whisper' : 'laugh_whisper', { pos: camera.position.clone().add(new THREE.Vector3(rand(-0.6, 0.6), 0, 0.3)), gain: 0.55, wet: false });
+        else if (r < 0.5) sound.voice('moan', { pos: d.inside.clone().setY(1.6), gain: 0.6, occluded: true });
+        else if (r < 0.75) sound.voice('breath_far', { pos: d.inside.clone().setY(1.6), gain: 0.6, occluded: true });
+        else if (r < 0.88) sound.voice('laugh_child', { pos: pickDoor((x) => x.door.z < -8).inside.clone().setY(1.2), gain: 0.4, occluded: true });
+        else sound.voice('moan', { pos: d.inside.clone().setY(1.6), gain: 0.5, occluded: true });
       }
       // what it took comes back, chewed
       for (let i = taken.length - 1; i >= 0; i--) {

@@ -1,6 +1,6 @@
-// All sound is synthesised with WebAudio (filtered noise and a few oscillators). Nothing is a sample.
-// The listener is the camera; sources are panned in 3D. Footsteps behind the back wall go through a low-pass,
-// the way sound through a plaster wall loses its highs.
+// Sound: recorded effects (public/sfx/*.mp3, made with scripts/gen-sounds.mjs) where they exist, and the
+// synthesised WebAudio versions (filtered noise and oscillators) as the fallback. The listener is the camera;
+// sources are panned in 3D. Sounds from behind a wall go through a low-pass, the way a plaster wall eats the highs.
 
 export function createSound() {
   let ctx = null, master = null, noiseBuf = null, room = null, muted = false;
@@ -26,7 +26,45 @@ export function createSound() {
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
     roomTone();
     scheduleCreak();
+    loadSamples();
     return true;
+  }
+
+  // ---- recorded effects
+  const buffers = new Map();
+  let ambience = null;
+  async function loadSamples() {
+    let list = [];
+    try { list = await (await fetch('/sfx/index.json')).json(); } catch { return; }
+    await Promise.all(list.map(async ({ name }) => {
+      try { buffers.set(name, await ctx.decodeAudioData(await (await fetch(`/sfx/${name}.mp3`)).arrayBuffer())); } catch { /* skip */ }
+    }));
+    if (buffers.has('ambience') && !ambience) ambience = play('ambience', { loop: true, gain: 0.45, wet: false });
+  }
+  const variants = (prefix) => [...buffers.keys()].filter((k) => k === prefix || k.startsWith(prefix + '_'));
+  const has = (prefix) => variants(prefix).length > 0;
+  /** play a recording (a random variant of `prefix`); returns { stop, setPos, setGain } or null */
+  function play(prefix, { pos = null, gain = 1, rate = 1, occluded = false, loop = false, wet = true, fadeIn = 0 } = {}) {
+    if (!ready() || muted) return null;
+    const vs = variants(prefix);
+    if (!vs.length) return null;
+    const src = ctx.createBufferSource();
+    src.buffer = buffers.get(vs[Math.floor(Math.random() * vs.length)]);
+    src.loop = loop; src.playbackRate.value = rate;
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    if (fadeIn > 0) { g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + fadeIn); } else g.gain.value = gain;
+    let node = src.connect(g);
+    if (occluded) { const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600; node = node.connect(lp); }
+    let p = null;
+    if (pos) { p = panner(pos); node = node.connect(p); }
+    out(node, wet);
+    src.start(t);
+    return {
+      stop(fade = 0.3) { const e = ctx.currentTime; g.gain.cancelScheduledValues(e); g.gain.setTargetAtTime(0, e, fade / 3); src.stop(e + fade + 0.1); },
+      setPos(v) { if (p) { p.positionX.value = v.x; p.positionY.value = v.y; p.positionZ.value = v.z; } },
+      setGain(v) { g.gain.setTargetAtTime(v, ctx.currentTime, 0.1); },
+    };
   }
 
   const noise = (loop = false) => { const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = loop; return s; };
@@ -75,7 +113,7 @@ export function createSound() {
   }
 
   let listenerSet = false;
-  return {
+  const api = {
     /** call from a user gesture */
     unlock() { if (ensure() && ctx.state === 'suspended') ctx.resume(); return !!ctx; },
     get ready() { return !!ctx && ctx.state === 'running'; },
@@ -337,6 +375,37 @@ export function createSound() {
       n.connect(bp).connect(g); out(g, false); n.start(t); n.stop(t + 0.05);
     },
   };
+
+  // ---- prefer the recordings where there are some
+  const synth = { ...api };
+  let lastCreak = 0;
+  Object.assign(api, {
+    has,
+    /** a recorded voice or sound, positioned (see play) */
+    voice(prefix, opts) { return play(prefix, opts); },
+    footstep(o) {
+      if (!has('step_walk') && !has('step_run')) return synth.footstep(o);
+      const name = o.kind === 'crawl' && has('crawl') ? 'crawl' : o.gain < 0.55 ? 'step_walk' : 'step_run';
+      play(name, { pos: o.pos, gain: Math.min(1.2, 0.35 + o.gain * 0.7), rate: 0.9 + Math.random() * 0.2, occluded: o.occluded });
+    },
+    shriek() { if (!play('shriek', { gain: 1.1, wet: false })) synth.shriek(); },
+    sting(strength = 1) { synth.sting(strength * 0.6); play('growl', { gain: 0.9 * strength, wet: false }); },
+    thunder(strength = 1) { if (!play('thunder', { gain: 0.9 * strength })) synth.thunder(strength); },
+    doorCreak(pos, amount = 0.5) {
+      const now = ctx ? ctx.currentTime : 0;
+      if (has('door_creak')) { if (now - lastCreak > 1.6) { lastCreak = now; play('door_creak', { pos, gain: 0.5 + amount * 0.6, rate: 0.85 + Math.random() * 0.3 }); } }
+      else synth.doorCreak(pos, amount);
+    },
+    tear(pos) { if (!play('box_tear', { pos, gain: 1 })) synth.tear(pos); },
+    thud(o) { if (o.strength > 0.7 && has('box_thud')) play('box_thud', { pos: o.pos, gain: Math.min(1, o.strength * 0.7), rate: 1.1 - o.size * 0.3 }); else synth.thud(o); },
+    shutter(sec) { if (!play('camera_flash', { gain: 0.8, wet: false })) synth.shutter(sec); },
+    flareHiss() { play('flare_ignite', { gain: 0.8 }); return synth.flareHiss(); },
+    musicBox() {
+      const h = play('music_box', { pos: { x: 0, y: 0, z: -3 }, loop: true, gain: 0.8 });
+      return h ? { stop: () => h.stop(0.6), setPos: (v) => h.setPos(v) } : synth.musicBox();
+    },
+  });
+  return api;
 
   function ready() { return !!ctx && ctx.state === 'running'; }
 }
