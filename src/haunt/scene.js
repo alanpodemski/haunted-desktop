@@ -69,6 +69,8 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   const post = createPost(renderer, scene, camera, flashlight);
 
   const physics = await createPhysics(room.root);
+  physics.world.step();                                  // build the query structures before the first ray
+  flashlight.setCaster((o, d) => physics.cast(o, d));
   const boxes = createBoxes({ scene, physics, camera, desk, sound });
 
   // camera shake (the jumpscare): a decaying random rotation around the fixed view

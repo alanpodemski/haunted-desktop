@@ -81,13 +81,15 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
   // (fast mouse back and forth) reseats it, as smacking a torch does
   let lastNdc = null, lastNdcT = 0, shakeEnergy = 0;
   const ray = new THREE.Raycaster();
+  // what the beam hits: the analytic room until the physics world (real walls and furniture) is ready
+  let cast = (o, d) => castRoom(o, d);
   const dir = new THREE.Vector3();
   const tmp = new THREE.Vector3();
 
   function desiredAngles() {
     ray.setFromCamera(ndc, camera);
     const o = ray.ray.origin, d = ray.ray.direction;
-    const hit = castRoom([o.x, o.y, o.z], [d.x, d.y, d.z]);
+    const hit = cast([o.x, o.y, o.z], [d.x, d.y, d.z]);
     // aim from the hand at the point under the cursor, so the hotspot lands on the cursor
     tmp.set(hit.point[0], hit.point[1], hit.point[2]).sub(hand).normalize();
     return { yaw: Math.atan2(tmp.x, -tmp.z), pitch: Math.asin(THREE.MathUtils.clamp(tmp.y, -1, 1)) };
@@ -96,6 +98,8 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
   return {
     spot, bounce,
     get on() { return on; },
+    /** use a ray caster that returns { point, normal, dist } (the physics world) */
+    setCaster(fn) { cast = fn; },
     /** cursor in normalised device coordinates */
     setPointer(x, y) {
       const now = performance.now() / 1000;
@@ -182,8 +186,8 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
       spot.intensity = candela * level * output;
 
       // bounce light: hit point of the beam axis, re-emitted as a Lambertian source
-      const h = castRoom([spot.position.x, spot.position.y, spot.position.z], [dir.x, dir.y, dir.z]);
-      const albedo = h.inCorridor ? 0.22 : 0.3;
+      const h = cast([spot.position.x, spot.position.y, spot.position.z], [dir.x, dir.y, dir.z]);
+      const albedo = 0.27;
       const beamSolidAngle = Math.PI * Math.pow(spot.angle * 0.55, 2);    // where most of the cookie's energy is
       const flux = spot.intensity * beamSolidAngle * 0.55;                 // cookie average ≈ 0.55
       bounce.intensity = 0.6 * albedo * flux / Math.PI;   // 0.6: part of the patch lies beyond the beam axis hit and much of the room absorbs
