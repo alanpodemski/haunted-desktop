@@ -23,24 +23,27 @@ ROW = lambda r: 69 + 88 * r
 
 # name, kind, bytes, (col, row) or (x, y) absolute for strays, icloud
 ITEMS = [
+    # folders are moving boxes: the barricade
     ('Macintosh HD',                          'volume', 18_576_642_048, (0, 0)),
     ('Hallway Recordings',                    'folder',  6_660_000_000, (0, 1)),
     ('DO NOT OPEN',                           'folder',    666_000_000, (0, 2)),
     ('Costume Ideas',                         'folder',    131_000_000, (0, 3)),
-    ('untitled folder',                       'folder',              0, (0, 4)),
-    ('pumpkin_stencils.zip',                  'zip',        31_000_000, (0, 5)),
-    ('IMG_0666.jpeg',                         'jpeg',        3_310_000, (1, 0)),
-    ('Screenshot 2026-10-31 at 03.33.03.png', 'png',         1_480_000, (1, 1)),
-    ('house_floorplan_1987.pdf',              'pdf',           184_000, (1, 2)),
-    ('EVP_session_04.m4a',                    'm4a',        13_000_000, (1, 3)),
-    ('night_cam_02.mov',                      'mov',     1_240_000_000, (1, 4)),
-    ('it_comes_at_3am.txt',                   'txt',             2_100, (2, 0)),
-    ('candy_inventory.csv',                   'csv',            46_000, (2, 1)),
-    ('lease_SIGNED_in_red.pdf',               'pdf',            96_000, (2, 2)),
-    ('Party Playlist',                        'folder',     58_000_000, (2, 3)),
+    ('Old Toys',                              'folder',  1_900_000_000, (0, 4)),
+    ('untitled folder',                       'folder',              0, (0, 5)),
+    ('Party Playlist',                        'folder',     58_000_000, (1, 5)),
+    # .usdz files are things to defend yourself with (their 3D thumbnails are rendered at runtime)
+    ('candle.usdz',                           'usdz',        1_200_000, (1, 0)),
+    ('candle 2.usdz',                         'usdz',        1_200_000, (1, 1)),
+    ('road_flare.usdz',                       'usdz',        2_800_000, (1, 2)),
+    ('salt.usdz',                             'usdz',          900_000, (1, 3)),
+    ('batteries.usdz',                        'usdz',          640_000, (1, 4)),
+    ('music_box.usdz',                        'usdz',        3_100_000, (2, 0)),
+    # documents
+    ('it_comes_at_3am.txt',                   'txt',             2_100, (2, 1)),
+    ('IMG_0666.jpeg',                         'jpeg',        3_310_000, (2, 2)),
+    ('candy_inventory.csv',                   'csv',            46_000, (2, 3)),
     # strays dragged out of the grid and forgotten
     ('dont_turn_around.jpeg',                 'jpeg',        2_400_000, ('abs', 1270, 860)),
-    ('final_FINAL_scary.psd',                 'psd',       188_000_000, ('abs', 1420, 560)),
     ('exorcism_checklist.md',                 'md',              1_300, ('abs', 250, 830)),
 ]
 
@@ -62,6 +65,42 @@ def tint_folder(path, hue, sat, val):
     out = Image.merge('HSV', (h, s_, v)).convert('RGB')
     out.putalpha(a)
     out.save(path)
+
+def cardboard_folder(path, name):
+    """Finder's folder shape, but made of corrugated cardboard with packing tape and a marker scrawl."""
+    im = Image.open(path).convert('RGBA')
+    w, h = im.size
+    a = im.getchannel('A')
+    lum = im.convert('L')
+    # keep the folder's shading (its luminance), recolour to kraft board
+    base = Image.new('RGB', (w, h), (176, 128, 78))
+    shade = lum.point(lambda v: int(150 + (v - 180) * 1.1) if v > 0 else 0)
+    board = Image.composite(base, Image.new('RGB', (w, h), (120, 82, 46)), shade)
+    d = ImageDraw.Draw(board)
+    rnd = random.Random(name)
+    # flutes and fibres
+    for y in range(0, h, max(2, h // 64)):
+        d.line([(0, y), (w, y)], fill=(160, 114, 66), width=1)
+    for _ in range(w * 3):
+        x, y = rnd.randrange(w), rnd.randrange(h)
+        c = rnd.choice([(140, 98, 56), (196, 150, 98)])
+        d.point((x, y), fill=c)
+    # the tab is the flap; a strip of tape down the middle of the front
+    tw = w // 7
+    tape = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    td = ImageDraw.Draw(tape)
+    td.rectangle([w // 2 - tw // 2, int(h * 0.28), w // 2 + tw // 2, int(h * 0.86)], fill=(214, 184, 128, 150))
+    board = Image.alpha_composite(board.convert('RGBA'), tape)
+    # marker scribble standing for a label
+    d = ImageDraw.Draw(board)
+    y0 = int(h * 0.62)
+    pts = [(int(w * 0.18) + i * w // 40, y0 + rnd.randint(-h // 60, h // 60)) for i in range(10)]
+    d.line(pts, fill=(25, 20, 16, 230), width=max(2, w // 64))
+    # darker edges
+    edge = a.filter(ImageFilter.FIND_EDGES).point(lambda v: 90 if v > 40 else 0)
+    board.paste((80, 54, 28), mask=edge)
+    board.putalpha(a)
+    board.save(path)
 
 def slug(s):
     out = ''.join(ch.lower() if ch.isalnum() else '-' for ch in s)
@@ -161,7 +200,7 @@ def main():
             p = '/'
         else:
             p = os.path.join(tmp, name)
-            if kind == 'm4a':
+            if kind in ('m4a', 'usdz'):
                 open(p, 'wb').write(b'\0' * 64)
             elif kind == 'folder':
                 os.makedirs(p)
@@ -207,8 +246,8 @@ def main():
         it['path'] = '/Users/demo/Desktop/' + it['name'] if it['kind'] != 'volume' else '/'
 
     for it in items:
-        if it['id'] in FOLDER_TINT and it['icon']:
-            tint_folder(os.path.join(ICONS, f"desk-{it['id']}.png"), *FOLDER_TINT[it['id']])
+        if it['kind'] == 'folder' and it['icon']:
+            cardboard_folder(os.path.join(ICONS, f"desk-{it['id']}.png"), it['name'])
 
     desktop_path = os.path.join(OUT, 'desktop.json')
     prev = json.load(open(desktop_path)) if os.path.exists(desktop_path) else {}

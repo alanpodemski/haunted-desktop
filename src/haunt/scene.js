@@ -13,6 +13,7 @@ import { createCreature } from './creature.js';
 import { createPhysics } from './physics.js';
 import { createBoxes } from './boxes.js';
 import { createPhoto } from './photo.js';
+import { createItems } from './items.js';
 
 export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   // Render at CSS-pixel resolution (1×) by default: the scene is dark and grainy, so 2× Retina pixels are
@@ -92,6 +93,8 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
     },
   });
   const photo = createPhoto({ renderer, scene, camera, post, creature, desk, sound });
+  const items = createItems({ scene, physics, boxes, flashlight, sound, desk });
+  creature.setItems(items);
 
   function resize() {
     renderer.setPixelRatio(dpr());
@@ -135,7 +138,7 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   const isMoving = () => {
     if (boxes.holding) return true;
     for (const b of boxes.boxes.values()) if (!b.body.isSleeping()) return true;
-    return false;
+    return items.live.length > 0;
   };
   function frame(now) {
     requestAnimationFrame(frame);
@@ -160,6 +163,7 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
     physics.step(dt, (h) => { boxes.beforeStep(h); creature.beforeStep(h); });
     creature.afterStep();
     boxes.sync();
+    items.update(dt, time);
     if (creature.busy || creature.actor.root.visible || isMoving()) leak.shadow.needsUpdate = true;
     if (shake > 0) {
       shake = Math.max(0, shake - dt * 1.4);
@@ -177,7 +181,7 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   let batteryShown = 0;
 
   return {
-    renderer, scene, camera, flashlight, creature, room, post, leak, physics, boxes, photo,
+    renderer, scene, camera, flashlight, creature, room, post, leak, physics, boxes, photo, items,
     get renderScale() { return renderScale; },
     setPointer(clientX, clientY) {
       flashlight.setPointer((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);

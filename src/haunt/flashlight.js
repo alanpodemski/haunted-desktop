@@ -109,6 +109,8 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
       lastNdcT = now;
       ndc.set(x, y);
     },
+    /** fresh cells */
+    replaceBatteries() { charge = 1; sag = 0; flicker = 0; nextContact = 12; },
     /** battery state: charge 0..1 (what the menu bar shows), light output 0..1 */
     get battery() { return { charge, volts, output }; },
     get output() { return output * level; },

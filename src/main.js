@@ -9,6 +9,7 @@
 import { createDesktop } from './desktop/index.js';
 import { createHaunt } from './haunt/scene.js';
 import { createSound } from './haunt/sound.js';
+import { itemType, renderItemIcons } from './haunt/items.js';
 
 const q = new URLSearchParams(location.search);
 
@@ -21,7 +22,11 @@ async function boot() {
     onDrop: (icon, x, y) => (dropHandler ? dropHandler(icon, x, y) : false),
   });
   const haunt = await createHaunt(document.getElementById('scene'), { sound, desk, quality: q.has('hq') ? 2 : q.has('low') ? 0.5 : 1 });
-  dropHandler = (icon, x, y) => haunt.boxes.drop(icon, x, y);
+  // folders and documents become boxes; .usdz files are the things you defend yourself with
+  dropHandler = (icon, x, y) => (itemType(icon.name) ? haunt.items.drop(icon, x, y) : haunt.boxes.drop(icon, x, y));
+  // their icons: 3D thumbnails of the same models, as Finder shows .usdz files
+  const thumbs = renderItemIcons();
+  for (const ic of desk.getIcons()) { const t = itemType(ic.name); if (t) desk.renameIcon(ic.id, ic.name, thumbs[t]); }
 
   addEventListener('pointermove', (e) => haunt.setPointer(e.clientX, e.clientY), { passive: true });
   const hint = document.getElementById('hint');

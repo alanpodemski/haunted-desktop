@@ -16,7 +16,8 @@ And sometimes it comes in. It only moves while it is not in your light.
 | Input | What it does |
 |---|---|
 | Mouse | Aim the flashlight |
-| Drag a file onto the floor | It becomes a moving box in the room. Barricade the door. Drop onto a box to stack. |
+| Drag a folder onto the floor | It becomes a moving box in the room. Barricade the door. Drop onto a box to stack. |
+| Drag a `.usdz` file into the room | Use it: candle, road flare, salt, fresh batteries, music box (see below) |
 | Drag a box | Push or carry it (heavy ones only slide) |
 | Double-click a box | The file goes back to the desktop |
 | Space | Camera flash. The photo lands on your desktop; double-click it to look. |
@@ -42,6 +43,14 @@ cursor, so every file you drag to build a barricade takes the light off it.
 - **Battery.** The menu bar battery is the torch's. Two old alkaline cells: they drain while it burns, sag with
   continuous use, creep back when it rests, and the bulb dims and yellows as they fail (light ∝ V^3.4). The switch has a
   loose contact; a hard shake of the mouse reseats it.
+- **Your things.** Folders are moving boxes (their icons are cardboard). The `.usdz` files are what you defend yourself
+  with, shown with 3D thumbnails like Finder shows them:
+  - `candle`: a 1.5 cd flame. It will not move inside its small pool of light. Burns about two minutes; knock it
+    over and it goes out.
+  - `road_flare`: red magnesium light for 30 s, bright enough to cast shadows across the room. It freezes anywhere near.
+  - `salt`: poured as a line across its way. It will not step over it until it has scuffed it away (about 12 s).
+  - `batteries`: fresh cells for the torch.
+  - `music_box`: it plays a waltz that runs down. It goes to listen, and then it breaks it.
 - **Bait.** A box left out in the corridor draws it: it comes for it, carries it off into the dark, and leaves you
   alone for a while. The file comes back later, chewed. Candy works fastest.
 - If it reaches you, you will know.

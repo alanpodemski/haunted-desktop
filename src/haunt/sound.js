@@ -214,6 +214,88 @@ export function createSound() {
       }
       out(g); n.start(t); n.stop(t + 1.7);
     },
+    /** a match struck and the wick catching */
+    match() {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      const n = noise(); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 0.8;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.18, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.02, t + 0.25); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+      n.connect(bp).connect(g); out(g); n.start(t); n.stop(t + 1);
+    },
+    /** the flame went out: a soft breath */
+    puff(pos) {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      const n = noise(); const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      const p = panner(pos); n.connect(lp).connect(g).connect(p); out(p); n.start(t); n.stop(t + 0.4);
+    },
+    /** a road flare: a hard ignition crack, then a sputtering hiss while it burns; returns { stop } */
+    flareHiss() {
+      if (!ready()) return null;
+      const t = ctx.currentTime;
+      const n = noise(true);
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+      const g = ctx.createGain(); g.gain.setValueAtTime(muted ? 0 : 0.25, t); g.gain.exponentialRampToValueAtTime(muted ? 0.0001 : 0.05, t + 0.6);
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 13; const lg = ctx.createGain(); lg.gain.value = 0.02;
+      lfo.connect(lg).connect(g.gain); lfo.start();
+      n.connect(hp).connect(g); out(g); n.start(t);
+      return { stop() { const e = ctx.currentTime; g.gain.cancelScheduledValues(e); g.gain.setTargetAtTime(0, e, 0.3); n.stop(e + 1.5); lfo.stop(e + 1.5); } };
+    },
+    /** salt poured out of a canister: granular hiss */
+    pour() {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      const g = ctx.createGain(); g.gain.value = 0;
+      for (let s2 = 0; s2 < 1.2; s2 += 0.004 + Math.random() * 0.006) g.gain.setValueAtTime(0.05 + Math.random() * 0.1, t + s2), g.gain.setValueAtTime(0, t + s2 + 0.002);
+      const n = noise(); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 5200; bp.Q.value = 0.7;
+      n.connect(bp).connect(g); out(g); n.start(t); n.stop(t + 1.3);
+    },
+    /** a music box: a slow, minor waltz on a comb of tuned steel teeth (sines with a fast bell decay); returns { stop, setPos } */
+    musicBox() {
+      if (!ready()) return null;
+      const p = panner({ x: 0, y: 0, z: -3 });
+      const g = ctx.createGain(); g.gain.value = muted ? 0 : 0.5; g.connect(p); out(p);
+      // "Für Elise"-like turn, transposed down and left unresolved
+      const tune = [76, 75, 76, 75, 76, 71, 74, 72, 69, 0, 60, 64, 69, 71, 0, 64, 68, 71, 72, 0, 64, 76, 75, 76, 75, 76, 71, 74, 72, 69];
+      let i = 0, stopped = false, rate = 0.36;
+      const tick = () => {
+        if (stopped) return;
+        const n = tune[i % tune.length]; i++;
+        if (n) {
+          const t = ctx.currentTime;
+          const f = 440 * Math.pow(2, (n - 69) / 12);
+          for (const [mult, amp] of [[1, 0.6], [3.98, 0.12], [8.1, 0.04]]) {
+            const o = ctx.createOscillator(); o.frequency.value = f * mult * (1 + (Math.random() - 0.5) * 0.004);
+            const e = ctx.createGain(); e.gain.setValueAtTime(amp, t); e.gain.exponentialRampToValueAtTime(0.0005, t + 1.6 / mult);
+            o.connect(e).connect(g); o.start(t); o.stop(t + 1.7);
+          }
+        }
+        rate *= 1.004;        // the spring runs down
+        setTimeout(tick, rate * 1000);
+      };
+      tick();
+      return {
+        stop() { stopped = true; g.gain.setTargetAtTime(0, ctx.currentTime, 0.2); },
+        setPos(v) { p.positionX.value = v.x; p.positionY.value = v.y; p.positionZ.value = v.z; },
+      };
+    },
+    /** wood and a steel comb breaking */
+    smash(pos) {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      const p = panner(pos);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.6, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+      const n = noise(); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 0.9;
+      n.connect(bp).connect(g);
+      for (const f of [1318, 1661, 2093, 2794]) {
+        const o = ctx.createOscillator(); o.frequency.value = f;
+        const e = ctx.createGain(); e.gain.setValueAtTime(0.06, t + 0.02); e.gain.exponentialRampToValueAtTime(0.0005, t + 1.2);
+        o.connect(e).connect(g); o.start(t + 0.02); o.stop(t + 1.3);
+      }
+      g.connect(p); out(p); n.start(t); n.stop(t + 0.8);
+    },
     /** the torch's slide switch */
     click(onState) {
       if (!ready() || muted) return;

@@ -81,6 +81,22 @@
       "icon": "/mac/icons/desk-costume-ideas.png"
     },
     {
+      "id": "old-toys",
+      "name": "Old Toys",
+      "path": "/Users/demo/Desktop/Old Toys",
+      "kind": "folder",
+      "ext": "",
+      "isFolder": true,
+      "bytes": 1900000000,
+      "icloud": false,
+      "finderKind": "folder",
+      "pos": {
+        "x": 1688,
+        "y": 421
+      },
+      "icon": "/mac/icons/desk-old-toys.png"
+    },
+    {
       "id": "untitled-folder",
       "name": "untitled folder",
       "path": "/Users/demo/Desktop/untitled folder",
@@ -92,105 +108,121 @@
       "finderKind": "folder",
       "pos": {
         "x": 1688,
-        "y": 421
+        "y": 509
       },
       "icon": "/mac/icons/desk-untitled-folder.png"
     },
     {
-      "id": "pumpkin-stencils-zip",
-      "name": "pumpkin_stencils.zip",
-      "path": "/Users/demo/Desktop/pumpkin_stencils.zip",
-      "kind": "zip",
-      "ext": "zip",
-      "isFolder": false,
-      "bytes": 31000000,
+      "id": "party-playlist",
+      "name": "Party Playlist",
+      "path": "/Users/demo/Desktop/Party Playlist",
+      "kind": "folder",
+      "ext": "",
+      "isFolder": true,
+      "bytes": 58000000,
       "icloud": false,
-      "finderKind": "zip",
+      "finderKind": "folder",
       "pos": {
-        "x": 1688,
+        "x": 1616,
         "y": 509
       },
-      "icon": "/mac/icons/desk-pumpkin-stencils-zip.png"
+      "icon": "/mac/icons/desk-party-playlist.png"
     },
     {
-      "id": "img-0666-jpeg",
-      "name": "IMG_0666.jpeg",
-      "path": "/Users/demo/Desktop/IMG_0666.jpeg",
-      "kind": "jpeg",
-      "ext": "jpeg",
+      "id": "candle-usdz",
+      "name": "candle.usdz",
+      "path": "/Users/demo/Desktop/candle.usdz",
+      "kind": "usdz",
+      "ext": "usdz",
       "isFolder": false,
-      "bytes": 3310000,
+      "bytes": 1200000,
       "icloud": false,
-      "finderKind": "jpeg",
+      "finderKind": "usdz",
       "pos": {
         "x": 1616,
         "y": 69
       },
-      "icon": "/mac/icons/desk-img-0666-jpeg.png"
+      "icon": "/mac/icons/desk-candle-usdz.png"
     },
     {
-      "id": "screenshot-2026-10-31-at-03-33-03-png",
-      "name": "Screenshot 2026-10-31 at 03.33.03.png",
-      "path": "/Users/demo/Desktop/Screenshot 2026-10-31 at 03.33.03.png",
-      "kind": "png",
-      "ext": "png",
+      "id": "candle-2-usdz",
+      "name": "candle 2.usdz",
+      "path": "/Users/demo/Desktop/candle 2.usdz",
+      "kind": "usdz",
+      "ext": "usdz",
       "isFolder": false,
-      "bytes": 1480000,
+      "bytes": 1200000,
       "icloud": false,
-      "finderKind": "png",
+      "finderKind": "usdz",
       "pos": {
         "x": 1616,
         "y": 157
       },
-      "icon": "/mac/icons/desk-screenshot-2026-10-31-at-03-33-03-png.png"
+      "icon": "/mac/icons/desk-candle-2-usdz.png"
     },
     {
-      "id": "house-floorplan-1987-pdf",
-      "name": "house_floorplan_1987.pdf",
-      "path": "/Users/demo/Desktop/house_floorplan_1987.pdf",
-      "kind": "pdf",
-      "ext": "pdf",
+      "id": "road-flare-usdz",
+      "name": "road_flare.usdz",
+      "path": "/Users/demo/Desktop/road_flare.usdz",
+      "kind": "usdz",
+      "ext": "usdz",
       "isFolder": false,
-      "bytes": 184000,
+      "bytes": 2800000,
       "icloud": false,
-      "finderKind": "pdf",
+      "finderKind": "usdz",
       "pos": {
         "x": 1616,
         "y": 245
       },
-      "icon": "/mac/icons/desk-house-floorplan-1987-pdf.png"
+      "icon": "/mac/icons/desk-road-flare-usdz.png"
     },
     {
-      "id": "evp-session-04-m4a",
-      "name": "EVP_session_04.m4a",
-      "path": "/Users/demo/Desktop/EVP_session_04.m4a",
-      "kind": "m4a",
-      "ext": "m4a",
+      "id": "salt-usdz",
+      "name": "salt.usdz",
+      "path": "/Users/demo/Desktop/salt.usdz",
+      "kind": "usdz",
+      "ext": "usdz",
       "isFolder": false,
-      "bytes": 13000000,
+      "bytes": 900000,
       "icloud": false,
-      "finderKind": "m4a",
+      "finderKind": "usdz",
       "pos": {
         "x": 1616,
         "y": 333
       },
-      "icon": "/mac/icons/desk-evp-session-04-m4a.png"
+      "icon": "/mac/icons/desk-salt-usdz.png"
     },
     {
-      "id": "night-cam-02-mov",
-      "name": "night_cam_02.mov",
-      "path": "/Users/demo/Desktop/night_cam_02.mov",
-      "kind": "mov",
-      "ext": "mov",
+      "id": "batteries-usdz",
+      "name": "batteries.usdz",
+      "path": "/Users/demo/Desktop/batteries.usdz",
+      "kind": "usdz",
+      "ext": "usdz",
       "isFolder": false,
-      "bytes": 1240000000,
+      "bytes": 640000,
       "icloud": false,
-      "finderKind": "mov",
+      "finderKind": "usdz",
       "pos": {
         "x": 1616,
         "y": 421
       },
-      "icon": "/mac/icons/desk-night-cam-02-mov.png"
+      "icon": "/mac/icons/desk-batteries-usdz.png"
+    },
+    {
+      "id": "music-box-usdz",
+      "name": "music_box.usdz",
+      "path": "/Users/demo/Desktop/music_box.usdz",
+      "kind": "usdz",
+      "ext": "usdz",
+      "isFolder": false,
+      "bytes": 3100000,
+      "icloud": false,
+      "finderKind": "usdz",
+      "pos": {
+        "x": 1544,
+        "y": 69
+      },
+      "icon": "/mac/icons/desk-music-box-usdz.png"
     },
     {
       "id": "it-comes-at-3am-txt",
@@ -204,9 +236,25 @@
       "finderKind": "txt",
       "pos": {
         "x": 1544,
-        "y": 69
+        "y": 157
       },
       "icon": "/mac/icons/desk-it-comes-at-3am-txt.png"
+    },
+    {
+      "id": "img-0666-jpeg",
+      "name": "IMG_0666.jpeg",
+      "path": "/Users/demo/Desktop/IMG_0666.jpeg",
+      "kind": "jpeg",
+      "ext": "jpeg",
+      "isFolder": false,
+      "bytes": 3310000,
+      "icloud": false,
+      "finderKind": "jpeg",
+      "pos": {
+        "x": 1544,
+        "y": 245
+      },
+      "icon": "/mac/icons/desk-img-0666-jpeg.png"
     },
     {
       "id": "candy-inventory-csv",
@@ -220,41 +268,9 @@
       "finderKind": "csv",
       "pos": {
         "x": 1544,
-        "y": 157
-      },
-      "icon": "/mac/icons/desk-candy-inventory-csv.png"
-    },
-    {
-      "id": "lease-signed-in-red-pdf",
-      "name": "lease_SIGNED_in_red.pdf",
-      "path": "/Users/demo/Desktop/lease_SIGNED_in_red.pdf",
-      "kind": "pdf",
-      "ext": "pdf",
-      "isFolder": false,
-      "bytes": 96000,
-      "icloud": false,
-      "finderKind": "pdf",
-      "pos": {
-        "x": 1544,
-        "y": 245
-      },
-      "icon": "/mac/icons/desk-lease-signed-in-red-pdf.png"
-    },
-    {
-      "id": "party-playlist",
-      "name": "Party Playlist",
-      "path": "/Users/demo/Desktop/Party Playlist",
-      "kind": "folder",
-      "ext": "",
-      "isFolder": true,
-      "bytes": 58000000,
-      "icloud": false,
-      "finderKind": "folder",
-      "pos": {
-        "x": 1544,
         "y": 333
       },
-      "icon": "/mac/icons/desk-party-playlist.png"
+      "icon": "/mac/icons/desk-candy-inventory-csv.png"
     },
     {
       "id": "dont-turn-around-jpeg",
@@ -271,22 +287,6 @@
         "y": 860
       },
       "icon": "/mac/icons/desk-dont-turn-around-jpeg.png"
-    },
-    {
-      "id": "final-final-scary-psd",
-      "name": "final_FINAL_scary.psd",
-      "path": "/Users/demo/Desktop/final_FINAL_scary.psd",
-      "kind": "psd",
-      "ext": "psd",
-      "isFolder": false,
-      "bytes": 188000000,
-      "icloud": false,
-      "finderKind": "psd",
-      "pos": {
-        "x": 1420,
-        "y": 560
-      },
-      "icon": "/mac/icons/desk-final-final-scary-psd.png"
     },
     {
       "id": "exorcism-checklist-md",

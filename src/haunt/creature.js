@@ -193,6 +193,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   let nextAt = performance.now() / 1000 + rand(6, 9);
   let nextHuntAt = performance.now() / 1000 + rand(80, 110);
   let hunting = false, stunned = false, flashAt = -1e9;
+  let items = null;                           // candles, flares, salt, music boxes (set after creation)
   let baitBox = null, baitSeen = new Map();   // box id -> when it was first seen lying in the corridor
   const taken = [];                            // files it carried off, and when they come back
   let last = null, lastRoomRun = -1e9, count = 0;
@@ -207,6 +208,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     actor.headPos(head);
     chest.set(root.position.x, 1.25, root.position.z);
     let best = performance.now() - flashAt < 300 && inView() ? 1 : 0;
+    if (items) best = Math.max(best, items.lightAt(chest), items.lightAt(head));
     for (const p of [head, chest]) {
       if (!seenThroughDoor(flashlight.pos, p) || !seenThroughDoor(camera.position, p)) continue;
       best = Math.max(best, flashlight.exposure(p));
@@ -405,7 +407,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       const x = side < 0 ? CORRIDOR.x0 + 0.5 : CORRIDOR.x1 - 0.5;
       place(x, CORRIDOR_LANE_Z, faceAngle(-side, 0));
       setDynamic(true);
-      let flicker = rand(4, 7), blocked = 0, clip = null;
+      let flicker = rand(4, 7), blocked = 0, clip = null, detour = 0, detourSide = 1;
       while (true) {
         const dt = yield;
         if (stunned) { yield* retreat(); break; }
@@ -422,15 +424,46 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         const want = dark ? 'run' : 'walk';
         if (clip !== want) { actor.play(want, { fade: 0.25 }); clip = want; }
         const speed = dark ? meta.run.speed : meta.walk.speed * 2.3;
-        // along the corridor to the doorway, through it, then straight at you
+        // along the corridor to the doorway, through it, then straight at you; a music box playing comes first
         const inCorridor = root.position.z < ROOM.z0 - 0.15;
         const lined = Math.abs(root.position.x - DOOR.cx) < 0.18;
+        const lure = items && items.lure();
+        const lureInRoom = lure && lure.pos.z > ROOM.z0;
         let tx, tz;
-        if (inCorridor && !lined) { tx = DOOR.cx; tz = CORRIDOR_LANE_Z + 0.25; }
-        else if (root.position.z < ROOM.z0 + 0.4) { tx = DOOR.cx; tz = ROOM.z0 + 0.7; }
+        // inside, it first steps clear of the doorway (the dresser and the bed crowd it), then heads for its goal
+        if (inCorridor && !lined && !(lure && !lureInRoom)) { tx = DOOR.cx; tz = CORRIDOR_LANE_Z + 0.25; }
+        else if (lure && lureInRoom === !inCorridor && !(lureInRoom && root.position.z < ROOM.z0 + 1.1)) { tx = lure.pos.x; tz = lure.pos.z; }
+        else if (root.position.z < ROOM.z0 + 1.1) { tx = DOOR.cx + 0.15; tz = ROOM.z0 + 1.4; }
         else { tx = camera.position.x; tz = camera.position.z - 0.2; }
+        if (detour > 0) {
+          // walking round something solid: aim off to the side for a moment
+          detour -= dt;
+          const a = Math.atan2(tx - root.position.x, tz - root.position.z) + detourSide * 1.1;
+          tx = root.position.x + Math.sin(a); tz = root.position.z + Math.cos(a);
+        }
+        if (lure && Math.hypot(lure.pos.x - root.position.x, lure.pos.z - root.position.z) < 0.7) {
+          // it stops to listen, and then it breaks it
+          drive.speed = 0; actor.play('idle', { fade: 0.3 }); clip = null;
+          yield* wait(rand(4, 7));
+          actor.play(actor.has('attack') ? 'attack' : 'idle', { loop: false, fade: 0.15 });
+          yield* wait(0.9);
+          items.smash(lure.item);
+          yield* wait(1.2);
+          continue;
+        }
         const dx = tx - root.position.x, dz = tz - root.position.z, d = Math.hypot(dx, dz) || 1;
         drive.x = dx / d; drive.z = dz / d; drive.speed = speed;
+        // a line of salt ahead: it will not step over it; it scuffs at it until it is broken
+        if (items) {
+          const ahead = new THREE.Vector3(root.position.x + drive.x * 0.45, 0, root.position.z + drive.z * 0.45);
+          const line = items.saltBetween(root.position, ahead);
+          if (line) {
+            drive.speed = 0;
+            if (actor.clip !== 'idle' && actor.clip !== 'attack') { actor.play('idle', { fade: 0.25 }); clip = null; if (Math.random() < 0.5) sound && sound.sting(0.4); }
+            items.wearSalt(line, dt);
+            continue;
+          }
+        }
         let turn = faceAngle(drive.x, drive.z) - root.rotation.y; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
         root.rotation.y += turn * Math.min(1, 6 * dt);
         // the gait follows the speed it actually makes against whatever is in the way
@@ -438,7 +471,13 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         actor.setTimeScale(Math.max(0.25, v / meta[want].speed));
         footsteps(v / meta[want].speed);
         blocked = v < speed * 0.2 ? blocked + dt : Math.max(0, blocked - dt);
-        if (blocked > 0.9 && actor.has('attack')) { yield* bash(); clip = null; blocked = 0; }
+        if (blocked > 0.9) {
+          const fx = Math.sin(root.rotation.y), fz = Math.cos(root.rotation.y);
+          const front = new THREE.Vector3(root.position.x + fx * 0.55, 0, root.position.z + fz * 0.55);
+          if (boxes && boxes.near(front, 0.9).length && actor.has('attack')) { yield* bash(); clip = null; }
+          else { detour = 1.1; detourSide = Math.random() < 0.5 ? -1 : 1; }      // furniture: go round it
+          blocked = 0;
+        }
       }
       hunting = false;
       sound && sound.drone(false);
@@ -633,6 +672,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     get event() { return jobName; },
     get hunting() { return hunting; },
     get lit() { return litness(); },
+    setItems(v) { items = v; },
     trigger(name) { if (job) return false; return start(name); },
     /** the camera flashed: anything in view counts as caught; during a hunt it is driven back */
     onFlash() {
