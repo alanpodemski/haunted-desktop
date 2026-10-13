@@ -7,7 +7,11 @@ export const DOOR = { cx: -0.55, w: 0.9, h: 2.05 };
 export const CORRIDOR = { x0: -4.5, x1: 3.5, y0: 0, y1: 2.6, z0: -5.75, z1: ROOM.z0 - WALL_T };
 export const CORRIDOR_LANE_Z = -5.0;
 
-export const CAMERA = { pos: [0.25, 1.58, 0.35], look: [-0.2, 1.25, -4.2], fov: 50 };
+// v2: the hallway (public/models/hallway.glb). The v1 room's constants above stay for the placeholder room.
+export const CAMERA = { pos: [0.3, 1.6, 0.2], look: [-0.1, 1.2, -14], fov: 50 };
+/** where things may go: the hallway and its side rooms (boxes, the hand, drops) */
+export const BOUNDS = { x0: -3.95, x1: 3.95, y1: 2.9, z0: -13.9, z1: 0.7 };
+export const HALL = { x0: -1.25, x1: 1.25, z0: -14.0, z1: 0.8 };
 
 const doorX0 = DOOR.cx - DOOR.w / 2, doorX1 = DOOR.cx + DOOR.w / 2;
 

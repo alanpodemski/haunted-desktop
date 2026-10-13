@@ -4,7 +4,7 @@
 // lift and swing, heavy ones only slide, the way you would move them yourself.
 
 import * as THREE from 'three';
-import { ROOM } from './layout.js';
+import { BOUNDS as ROOM } from './layout.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const HAND_FORCE = 380;       // N: about what one arm pulls without bracing
@@ -222,6 +222,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
   });
 
   // ---- hand: grab a box with the mouse
+  let baitTest = () => false;   // where a box counts as left out for it (set by the creature)
   let hand = null;
   let lastBuild = -1e9;          // when you last dropped or moved a box (it gives you time to build)
   function pick(clientX, clientY) {
@@ -243,7 +244,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     if (!(t > 0)) t = 20;
     const p = o.clone().addScaledVector(d, Math.min(t, 9));
     p.x = clamp(p.x, ROOM.x0 + 0.2, ROOM.x1 - 0.2);
-    p.z = clamp(p.z, -5.6, ROOM.z1 - 0.3);
+    p.z = clamp(p.z, ROOM.z0 + 0.3, ROOM.z1 - 0.3);
     return p;
   }
 
@@ -289,6 +290,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
       return true;
     },
     get lastBuild() { return lastBuild; },
+    setBaitTest(fn) { baitTest = fn; },
     markBuild() { lastBuild = performance.now() / 1000; },
     /**
      * A whole selection dropped at once: it is stacked into a wall where you dropped it, the way you would pile
@@ -306,8 +308,8 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
       const side = new THREE.Vector3(toCam.z, 0, -toCam.x);
       const yaw = Math.atan2(toCam.x, toCam.z);
       const order = [...icons].sort((a, b) => b.bytes - a.bytes);
-      // rows up to 1.2 m wide, a layer up to the height of the door head; then the next layer goes in front of it
-      const ROW = 1.2, TOP = 1.95;
+      // rows up to 2.2 m wide, a layer up to the height of the door head; then the next layer goes in front of it
+      const ROW = 2.2, TOP = 1.95;      // rows across the hallway (2.5 m wide)
       const out = [];
       let layer = 0, y = base.y, rowW = 0, row = [], depth = 0;
       const place = () => {
@@ -375,7 +377,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
       for (const b of boxes.values()) {
         if (b.carried) continue;
         const t = b.body.translation();
-        if (t.z < ROOM.z0 - 0.25 && b.body.isSleeping()) out.push(b);
+        if (baitTest(new THREE.Vector3(t.x, 0, t.z)) && b.body.isSleeping()) out.push(b);
       }
       return out;
     },

@@ -2,8 +2,8 @@
 //
 // Mouse: aims the flashlight. Drag a file onto the floor: it becomes a box (barricade the door). Drag boxes around,
 // double-click one to put the file back. Select many (rubber band, Cmd-A, Shift-click) and drop them together.  Space: camera flash (a photo lands on the desktop).  F: flashlight.
-// N: sound.  P: pause.  R: tidy the icons.  H: it comes for you now.  1–7: make it happen now (dash, crawl, walk, drag, watch, intrude,
-// peek), for recording.
+// N: sound.  P: pause.  R: tidy the icons.  L: lightning.  H: it comes for you now.  1–7: make it happen now (cross, wander, dash,
+// crawl, peek, endwatch, hunt), for recording.
 // URL: ?nohud hides the hint, ?hq renders at full Retina resolution, ?low below CSS resolution.
 
 import { createDesktop } from './desktop/index.js';
@@ -58,7 +58,7 @@ async function boot() {
   addEventListener('pointerdown', unlock);
   addEventListener('keydown', unlock);
 
-  const EVENTS = ['dash', 'crawl', 'walk', 'drag', 'watch', 'intrude', 'peek'];
+  const EVENTS = ['cross', 'wander', 'dash', 'crawl', 'peek', 'endwatch', 'hunt'];
   addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.toLowerCase();
@@ -68,6 +68,7 @@ async function boot() {
     else if (k === 'p') haunt.pause();
     else if (k === 'h') haunt.creature.trigger('hunt');
     else if (k === 'r') desk.relayout();       // tidy the icons it scattered
+    else if (k === 'l') haunt.strike();         // lightning
     else if (/^[1-7]$/.test(k)) haunt.creature.trigger(EVENTS[Number(k) - 1]);
   });
 

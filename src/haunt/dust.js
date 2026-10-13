@@ -3,12 +3,12 @@
 // seen against the light, the brightest).
 
 import * as THREE from 'three';
-import { ROOM } from './layout.js';
+import { HALL } from './layout.js';
 
 export function createDust(scene, flashlight, count = 1600) {
   const pos = new Float32Array(count * 3);
   const seed = new Float32Array(count);
-  const box = { x0: ROOM.x0 + 0.1, x1: ROOM.x1 - 0.1, y0: 0.05, y1: ROOM.y1 - 0.05, z0: ROOM.z0 + 0.1, z1: 0.2 };
+  const box = { x0: HALL.x0 + 0.1, x1: HALL.x1 - 0.1, y0: 0.05, y1: 2.8, z0: -8, z1: 0.2 };   // the near half of the hallway
   for (let i = 0; i < count; i++) {
     pos[i * 3] = box.x0 + Math.random() * (box.x1 - box.x0);
     pos[i * 3 + 1] = box.y0 + Math.random() * (box.y1 - box.y0);
@@ -68,7 +68,7 @@ export function createDust(scene, flashlight, count = 1600) {
       u.uLightPos.value.copy(flashlight.spot.position);
       u.uLightDir.value.copy(flashlight.dir);
       u.uCos.value = Math.cos(flashlight.spot.angle);
-      u.uLevel.value = flashlight.spot.intensity / 90;
+      u.uLevel.value = flashlight.spot.intensity / 170;
       u.uCam.value.copy(camera.position);
       // drift: a weak convection loop plus per-mote wander; settling ≈ 2 mm/s (10 µm fibres)
       for (let i = 0; i < count; i++) {

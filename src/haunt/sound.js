@@ -214,6 +214,35 @@ export function createSound() {
       }
       out(g); n.start(t); n.stop(t + 1.7);
     },
+    /** a door swinging on old hinges */
+    doorCreak(pos, amount = 0.5) {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      const n = noise();
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 22;
+      const f0 = 520 + Math.random() * 380;
+      bp.frequency.setValueAtTime(f0, t); bp.frequency.linearRampToValueAtTime(f0 * (0.7 + Math.random() * 0.6), t + 0.5);
+      const am = ctx.createGain(); am.gain.value = 0;
+      for (let s2 = 0; s2 < 0.5; s2 += 0.01 + Math.random() * 0.025) {
+        am.gain.setValueAtTime(0.14 * amount * (0.5 + Math.random() * 0.5), t + s2);
+        am.gain.setValueAtTime(0, t + s2 + 0.006);
+      }
+      const p = panner(pos);
+      n.connect(bp).connect(am).connect(p); out(p); n.start(t); n.stop(t + 0.6);
+    },
+    /** thunder: a crack, then a long low roll (lowpassed noise with slow swells) */
+    thunder(strength = 1) {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      const n = noise(true);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(90, t + 1.2);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.5 * strength, t + 0.05);
+      let tt = t + 0.3;
+      for (let i = 0; i < 5; i++) { g.gain.linearRampToValueAtTime((0.15 + Math.random() * 0.3) * strength, tt); tt += 0.4 + Math.random() * 0.6; }
+      g.gain.exponentialRampToValueAtTime(0.001, tt + 2.5);
+      n.connect(lp).connect(g); out(g); n.start(t); n.stop(tt + 2.7);
+    },
     /** a match struck and the wick catching */
     match() {
       if (!ready() || muted) return;

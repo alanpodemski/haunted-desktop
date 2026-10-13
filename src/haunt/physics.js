@@ -24,11 +24,13 @@ export async function createPhysics(roomRoot) {
   // room is described here by hand.
   roomRoot.updateMatrixWorld(true);
   const authored = roomRoot.getObjectByName('Colliders');
+  const leafCols = new Map();
   if (authored) {
     const p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), c = new THREE.Vector3(), sz = new THREE.Vector3();
     authored.traverse((o) => {
       if (!o.isMesh) return;
       o.visible = false;
+      if (/^COL_DoorLeaf_/.test(o.name)) { leafCols.set(o.name.slice('COL_DoorLeaf_'.length), o); return; }
       o.geometry.computeBoundingBox();
       o.geometry.boundingBox.getCenter(c); o.geometry.boundingBox.getSize(sz);
       o.matrixWorld.decompose(p, q, sc);
@@ -38,6 +40,35 @@ export async function createPhysics(roomRoot) {
         c.x, c.y, c.z, fr, { x: q.x, y: q.y, z: q.z, w: q.w });
     });
   } else buildV1Room();
+
+  // ---- doors: each leaf hangs on a hinge (a revolute joint about its vertical pivot axis) with the stiffness of an
+  // old door (a damped motor), up to 100° either way from closed. Anything that walks into one swings it.
+  const doors = [];
+  roomRoot.traverse((o) => {
+    const m = o.name.match(/^DoorLeaf_(\w+)$/);
+    if (!m || !leafCols.has(m[1])) return;
+    const col = leafCols.get(m[1]);
+    const p = o.getWorldPosition(new THREE.Vector3()), q = o.getWorldQuaternion(new THREE.Quaternion());
+    col.geometry.computeBoundingBox();
+    const sz = col.geometry.boundingBox.getSize(new THREE.Vector3()).multiply(col.getWorldScale(new THREE.Vector3()));
+    const c = col.getWorldPosition(new THREE.Vector3()).sub(p).applyQuaternion(q.clone().invert());
+    const rot = { x: q.x, y: q.y, z: q.z, w: q.w };
+    const hinge = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(p.x, p.y, p.z).setRotation(rot));
+    const leaf = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(p.x, p.y, p.z).setRotation(rot)
+      .setAngularDamping(1.5).setLinearDamping(1));
+    world.createCollider(RAPIER.ColliderDesc.cuboid(Math.max(0.005, sz.x / 2 - 0.02), Math.max(0.005, sz.y / 2 - 0.02), Math.max(0.005, sz.z / 2 - 0.02))
+      .setTranslation(c.x, c.y, c.z).setMass(18).setFriction(0.3), leaf);
+    const ex = o.userData || {};
+    const open = THREE.MathUtils.degToRad(ex.open_deg ?? 45), sign = ex.open_sign ?? 1;
+    // old hinges let a leaf swing either way from closed (pushed from inside the room or from the hallway)
+    const closed = -sign * open, swing = THREE.MathUtils.degToRad(100);
+    const data = RAPIER.JointData.revolute({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 });
+    data.limitsEnabled = true;
+    data.limits = [closed - swing, closed + swing];
+    const joint = world.createImpulseJoint(data, hinge, leaf, true);
+    joint.configureMotorVelocity(0, 6);         // hinge friction: it swings, slows and stays where it is pushed
+    doors.push({ id: m[1], node: o, body: leaf });
+  });
   function buildV1Room() {
   const T = 0.25; // collider thickness behind each surface
   // room
@@ -87,6 +118,19 @@ export async function createPhysics(roomRoot) {
       return { point: [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t], normal: [n.x, n.y, n.z], dist: t };
     },
     onContactForce(cb) { contactCbs.push(cb); },
+    doors,
+    /** move the door leaves' meshes to where their bodies are; returns how fast each swings (rad/s) */
+    syncDoors() {
+      const out = [];
+      for (const d of doors) {
+        const t = d.body.translation(), r = d.body.rotation();
+        const m = new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.z), new THREE.Quaternion(r.x, r.y, r.z, r.w), new THREE.Vector3(1, 1, 1));
+        if (d.node.parent) m.premultiply(new THREE.Matrix4().copy(d.node.parent.matrixWorld).invert());
+        m.decompose(d.node.position, d.node.quaternion, new THREE.Vector3());
+        out.push({ d, w: Math.abs(d.body.angvel().y), pos: t });
+      }
+      return out;
+    },
     step(dt, beforeStep) {
       acc += Math.min(dt, 0.1);
       let n = 0;

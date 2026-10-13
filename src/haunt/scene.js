@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { CAMERA, CORRIDOR, CORRIDOR_LANE_Z } from './layout.js';
+import { CAMERA } from './layout.js';
 import { loadRoom } from './room.js';
 import { createFlashlight } from './flashlight.js';
 import { createDust } from './dust.js';
@@ -46,23 +46,73 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   const room = await loadRoom(loader, renderer);
   scene.add(room.root);
 
-  // Total darkness in the room, except for what leaks down the corridor from a window somewhere to the right:
-  // a cold, very weak light that only makes the doorway a slightly-less-black shape.
-  const leak = new THREE.SpotLight(0x8ea4cc, 1.6, 0, 0.75, 0.9, 2);
-  leak.position.set(CORRIDOR.x1 - 0.15, 2.1, CORRIDOR_LANE_Z - 0.2);
-  leak.target.position.set(CORRIDOR.x0, 0.4, CORRIDOR_LANE_Z + 0.2);
-  leak.castShadow = true;
-  leak.shadow.mapSize.set(512, 512);
-  leak.shadow.bias = -0.0002; leak.shadow.normalBias = 0.02;
-  leak.shadow.camera.near = 0.1; leak.shadow.camera.far = 10;
-  // the corridor light never moves: its shadow map is only redrawn while the creature is out
-  leak.shadow.autoUpdate = false;
-  leak.shadow.needsUpdate = true;
-  scene.add(leak, leak.target);
-  const fill = new THREE.HemisphereLight(0x202838, 0x0a0806, 0.004);
-  scene.add(fill);
+  // ---- the house's own geometry: doors and windows, from the environment's empties
+  const nav = { doors: [], end: new THREE.Vector3(0, 0, -14) };
+  const windows = [];
+  room.root.updateMatrixWorld(true);
+  room.root.traverse((o) => {
+    const m = o.name.match(/^Door_([LR]\d)$/);
+    if (m) {
+      const inside = room.root.getObjectByName(`Inside_${m[1]}`);
+      nav.doors.push({
+        id: m[1], side: m[1][0],
+        door: o.getWorldPosition(new THREE.Vector3()),
+        into: o.getWorldDirection(new THREE.Vector3()).setY(0).normalize(),     // local +Z: into the hallway
+        inside: inside ? inside.getWorldPosition(new THREE.Vector3()) : o.getWorldPosition(new THREE.Vector3()),
+      });
+    }
+    if (/^Window_(L\d|R\d|End)$/.test(o.name)) {
+      windows.push({ id: o.name, pos: o.getWorldPosition(new THREE.Vector3()), out: o.getWorldDirection(new THREE.Vector3()).negate() });
+      if (o.name === 'Window_End') nav.end.copy(o.getWorldPosition(new THREE.Vector3())).setY(0);
+    }
+  });
+  nav.doors.sort((a, b) => b.door.z - a.door.z);
 
-  const flashlight = createFlashlight(scene, camera);
+  // Moonlight: a cold, weak spot outside every window, shining in through it. Each casts a shadow (rendered once,
+  // and again only while something moves), so the light falls out of the doorways in pale patches and nowhere else.
+  const moons = windows.map((w) => {
+    const end = w.id === 'Window_End';
+    // a low moon (~14° up), so its light crosses the side rooms and falls out of the doorways onto the hallway
+    const inward = w.out.clone().setY(0).normalize().negate();
+    inward.y = -0.25; inward.normalize();
+    const l = new THREE.SpotLight(0x9fb4e6, end ? 22 : 38, 0, end ? 0.5 : 0.36, 0.5, 2);
+    l.position.copy(w.pos).addScaledVector(inward, -3.2);
+    l.target.position.copy(w.pos).addScaledVector(inward, 3);
+    l.castShadow = true;
+    l.shadow.mapSize.set(512, 512);
+    l.shadow.bias = -0.0004; l.shadow.normalBias = 0.03;
+    l.shadow.camera.near = 0.5; l.shadow.camera.far = 16;
+    l.shadow.autoUpdate = false; l.shadow.needsUpdate = true;
+    l.userData.base = l.intensity;
+    scene.add(l, l.target);
+    return l;
+  });
+  let moonTurn = 0;
+  const outside = [];
+  room.root.traverse((o) => { if (o.isMesh && /outside/i.test(o.name + (o.material && o.material.name))) outside.push(o.material); });
+
+  // Lightning: now and then the sky behind the windows flashes two or three times; the thunder follows a second or
+  // three later (the storm is a few hundred metres to a kilometre off). For that instant the whole hallway shows.
+  let nextLightning = performance.now() / 1000 + 25 + Math.random() * 20, strike = null;
+  function lightning(dt) {
+    const now = performance.now() / 1000;
+    if (!strike && now >= nextLightning) {
+      const pulses = [[0, 0.07, 1], [0.16, 0.05, 0.6], [0.4, 0.12, 0.85]].slice(0, 2 + (Math.random() < 0.6 ? 1 : 0));
+      strike = { t: 0, pulses, unstage: creature.stageForLightning() };
+      nextLightning = now + 20 + Math.random() * 35;
+      if (sound) setTimeout(() => sound.thunder(0.6 + Math.random() * 0.4), 1000 + Math.random() * 2000);
+    }
+    let k = 0;
+    if (strike) {
+      strike.t += dt;
+      for (const [t0, len, a] of strike.pulses) if (strike.t >= t0 && strike.t < t0 + len) k = Math.max(k, a);
+      if (strike.t > 0.7) { if (strike.unstage) strike.unstage(); strike = null; }
+    }
+    for (const l of moons) l.intensity = l.userData.base * (1 + 40 * k);
+    for (const m of outside) m.emissiveIntensity = 1 + 8 * k;
+  }
+
+  const flashlight = createFlashlight(scene, camera, { candela: 170 });   // a 14 m hallway needs a stronger torch than the room did
   flashlight.aimAt(room.defaultTarget);
   const dust = createDust(scene, flashlight);
   dust.setPixelRatio(renderer.getPixelRatio());
@@ -77,7 +127,7 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   const baseQuat = camera.quaternion.clone();
   let shake = 0;
   const creature = await createCreature(scene, loader, {
-    flashlight, camera, sound, physics, boxes,
+    flashlight, camera, sound, physics, boxes, nav,
     onJumpscare() {
       shake = 1;
       boxes.blast(camera.position, 60, 4);
@@ -165,8 +215,14 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
     physics.step(dt, (h) => { boxes.beforeStep(h); creature.beforeStep(h); });
     creature.afterStep();
     boxes.sync();
+    // doors that are pushed swing and creak (rusted hinges: stick-slip, louder the faster)
+    for (const { d, w, pos } of physics.syncDoors()) {
+      if (w > 0.35 && sound && (!d.lastCreak || time - d.lastCreak > 0.45)) { d.lastCreak = time; sound.doorCreak(pos, Math.min(1, w / 2)); }
+    }
     items.update(dt, time);
-    if (creature.busy || creature.actor.root.visible || isMoving()) leak.shadow.needsUpdate = true;
+    // moon shadows: redraw one light's map per frame while something moves
+    if (creature.busy || isMoving()) { moons[moonTurn % moons.length].shadow.needsUpdate = true; moonTurn++; }
+    lightning(dt);
     if (shake > 0) {
       shake = Math.max(0, shake - dt * 1.4);
       const a = 0.035 * shake * shake;
@@ -183,8 +239,10 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   let batteryShown = 0;
 
   return {
-    renderer, scene, camera, flashlight, creature, room, post, leak, physics, boxes, photo, items,
+    renderer, scene, camera, flashlight, creature, room, post, moons, nav, physics, boxes, photo, items,
     get renderScale() { return renderScale; },
+    /** lightning now (L key, for recording) */
+    strike() { nextLightning = 0; },
     setPointer(clientX, clientY) {
       flashlight.setPointer((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
     },

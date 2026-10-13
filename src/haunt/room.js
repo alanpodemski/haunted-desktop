@@ -4,9 +4,9 @@
 import * as THREE from 'three';
 import { ROOM, WALL_T, DOOR, CORRIDOR } from './layout.js';
 
-export async function loadRoom(loader, renderer) {
+export async function loadRoom(loader, renderer, url = '/models/hallway.glb') {
   let gltf = null;
-  try { gltf = await loader.loadAsync('/models/room.glb'); }
+  try { gltf = await loader.loadAsync(url); }
   catch (err) { console.warn('[haunt] room.glb missing, using the placeholder room:', err && err.message); }
   const root = gltf ? gltf.scene : placeholderRoom();
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
@@ -20,6 +20,11 @@ export async function loadRoom(loader, renderer) {
     for (const m of mats) {
       for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap']) {
         if (m[k]) m[k].anisotropy = maxAniso;
+      }
+      if (/outside/i.test(m.name + o.name)) {
+        // the night outside the windows: it glows by itself and takes no light or shadow
+        o.castShadow = o.receiveShadow = false;
+        if (m.emissiveMap) { m.emissiveIntensity = 1; }
       }
       if (m.transparent) {
         // cobwebs, grime decals, bulb glass and shards: blended, no depth writes, no shadows

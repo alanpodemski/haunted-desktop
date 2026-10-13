@@ -127,7 +127,7 @@ R.TEXSETS.update({
     "DoorPaint": (HT.door_paint, 1, 1, 1, False),
     "WinFrame": (HT.window_frame, 1, 1, 1, False),
     "GlassWin": (HT.window_glass, 1, 1, 1, True),
-    "Curtain": (HT.curtain, 2, 2, 2, True),
+    "Curtain": (lambda: HT.curtain(NU=512, NV=1024), 1, 1, 1, True),
     "Paintings": (HT.paintings, 1, 2, 2, False),
     "Leather": (HT.leather, 1, 1, 1, False),
     "NightSky": (HT.night_sky, 1, 0, 0, False),
@@ -201,7 +201,7 @@ def build_materials():
     mk("Brass", None, color=(0.42, 0.30, 0.14), rough=0.45, metal=0.9)
     mk("Bakelite", None, color=(0.09, 0.05, 0.03), rough=0.35)
     mk("Cord_Fabric", None, color=(0.10, 0.075, 0.055), rough=0.9)
-    mk("Glass_Milk", None, color=(0.40, 0.38, 0.33), rough=0.4, alpha=0.78, double=True, ao=False)
+    mk("Glass_Milk", None, color=(0.26, 0.25, 0.22), rough=0.45, alpha=0.8, double=True, ao=False)
     mk("Glass_Shard", None, color=(0.05, 0.055, 0.05), rough=0.04, alpha=0.6, double=True, ao=False)
     return tx
 
@@ -1638,7 +1638,7 @@ def bake_ao(objs, hide):
 # =============================================================================== previews
 CAM = bl((0.3, 1.6, 0.2))
 LOOK = bl((-0.1, 1.2, -14.0))
-FLASH_W = 700.0
+FLASH_W = 900.0
 
 
 def clear_lights(prefix="PV_"):
@@ -1683,7 +1683,7 @@ def previews(only=None):
         if name == "hall":
             R.render(pv("flash_hall"), LOOK, power=FLASH_W, samples=128)
         elif name == "door":
-            R.render(pv("flash_door"), Vector((HX0 - 0.2, 6.6, 0.95)), power=FLASH_W, samples=128)
+            R.render(pv("flash_door"), Vector((HX0 - 0.1, 8.6, 0.9)), power=FLASH_W, samples=128)
         elif name == "door2":
             R.render(pv("flash_door2"), Vector((HX1 + 0.1, 4.6, 1.0)), power=FLASH_W, samples=128)
         elif name == "end":
@@ -1718,7 +1718,7 @@ def previews(only=None):
         bpy.data.objects.remove(old, do_unlink=True)
 
 
-def moon_lights(power=260.0):
+def moon_lights(power=3500.0):
     col = (0.55, 0.66, 1.0)
     for e in bpy.data.objects:
         if not e.name.startswith("Window_") or e.type != "EMPTY":
@@ -1727,7 +1727,7 @@ def moon_lights(power=260.0):
         horiz = Vector((d.x, d.y, 0)).normalized()
         wall_t = EWT if e.name == "Window_End" else RWT
         p = e.location + horiz * (wall_t + 0.6) + d * 0.9
-        pw = power * (1.3 if e.name == "Window_End" else 1.0)
+        pw = power * (0.35 if e.name == "Window_End" else 1.0)
         add_light("Moon_" + e.name, "SPOT", p, pw, col, 0.08, aim=p - d, spot=math.radians(55), blend=0.25)
 
 

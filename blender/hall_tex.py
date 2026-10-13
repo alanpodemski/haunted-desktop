@@ -233,7 +233,7 @@ def window_glass(N=1024, seed=251):
     a = np.clip(grime + cr * 0.75, 0, 1) * (1 - hole)
     c = np.broadcast_to(col(0.17, 0.19, 0.18), (*shape, 3)).copy()
     c = lerp(c, col(0.30, 0.27, 0.21), np.clip((grime - 0.1) * 1.6, 0, 1))
-    c = lerp(c, col(0.55, 0.57, 0.55), cr * 0.8)
+    c = lerp(c, col(0.36, 0.38, 0.36), cr * 0.7)
     rough = np.clip(0.06 + 0.7 * np.clip(grime - 0.12, 0, 1) + 0.3 * cr, 0.03, 1)
     hmm = -0.2 * cr + 0.02 * grime
     return dict(base=np.clip(c, 0, 1), alpha=np.clip(a, 0, 1), rough=rough,

@@ -2,10 +2,12 @@
 
 Your wallpaper is a dark room now. You have a flashlight, a camera and your files. Something lives in the corridor.
 
-It runs in the browser on a fake macOS desktop. The wallpaper is a live three.js scene: an abandoned room seen from
-one fixed spot, with an open doorway onto a corridor. The only light is the flashlight, and it points wherever your
-cursor is. Every so often something goes past the doorway. Sometimes it stops and waits in the dark until you find it.
-And sometimes it comes in. It only moves while it is not in your light.
+It runs in the browser on a fake macOS desktop. The wallpaper is a live three.js scene: a long, abandoned hallway seen
+from one end, with doors on both sides into small dark rooms and a tall window at the far end. The only light you have
+is a flashlight that points wherever your cursor is; the moon comes in through the side rooms' windows and falls out
+of the doorways in pale patches, and now and then lightning shows the whole hallway for an instant. Something moves
+from room to room across it. Sometimes it stands in a doorway, or at the far window, until you find it. And sometimes
+it comes down the hallway for you. It only moves while it is not in your light.
 
 **Play it: https://deskhaunt.vercel.app**
 
@@ -28,18 +30,19 @@ And sometimes it comes in. It only moves while it is not in your light.
 | P | Pause |
 | R | Tidy the icons |
 | H | Make it come for you now |
-| 1 to 7 | Make it happen now: dash, crawl, walk, drag, watch, intrude, peek (for recording) |
+| L | Lightning |
+| 1 to 7 | Make it happen now: cross, wander, dash, crawl, peek, at the far window, hunt (for recording) |
 
 URL options: `?nohud` hides the hint, `?hq` renders at full Retina resolution, `?low` renders below CSS resolution.
 
 ## How to survive
 
-Every couple of minutes it comes through the doorway for you. In the beam it freezes mid-step. While the beam is
+Every couple of minutes it comes out of one of the far rooms and down the hallway for you. In the beam it freezes mid-step. While the beam is
 somewhere else it walks; in the dark, or while the old torch flickers, it runs. The catch: the flashlight follows your
 cursor, so every file you drag to build a barricade takes the light off it.
 
-- **Time to build.** While you are dropping and moving boxes, and for 10 s after, it waits in the corridor beside the
-  doorway (up to ~25 s per hunt), and nothing else comes past.
+- **Time to build.** While you are dropping and moving boxes, and for 10 s after, it waits in its room (up to ~25 s per
+  hunt), and nothing else comes past.
 - **Barricade.** Boxes are real rigid bodies. A file's size sets its box's size and mass, from a 1 kg box for a text
   file to an 80 kg one for a disk. It pushes with a limited force, so a heavy pile stops it, and then it beats at it.
 - **Flash.** A flash in its face drives it back out. The flash needs four seconds to recharge.
@@ -54,8 +57,8 @@ cursor, so every file you drag to build a barricade takes the light off it.
   - `salt`: poured as a line across its way. It will not step over it until it has scuffed it away (about 12 s).
   - `batteries`: fresh cells for the torch.
   - `music_box`: it plays a waltz that runs down. It goes to listen, and then it breaks it.
-- **Bait.** A box left out in the corridor draws it: it comes for it, carries it off into the dark, and leaves you
-  alone for a while. The file comes back later, chewed. Candy works fastest.
+- **Bait.** A box left by a doorway or in a side room draws it: it comes out for it, carries it off into the dark, and
+  leaves you alone for a while. The file comes back later, chewed. Candy works fastest.
 - If it reaches you, you will know.
 
 The camera has another use. Take a few photos of the empty room and look at them.
@@ -68,7 +71,10 @@ The camera has another use. Take a few photos of the empty room and look at them
   dimly fills a real room around a torch beam.
 - **Air.** Dust motes only show where the beam crosses them, brightest when they are between you and the light.
   A ray-marched haze pass adds the faint visible cone, with the shadow map so furniture casts shadows into it.
-- **Physics.** Rapier 3D: the room's walls and big furniture are static colliders, the boxes dynamic bodies with
+- **The house.** Doors hang on hinges (revolute joints with an old door's stiffness): whatever walks into one swings it,
+  and it creaks. Line of sight is a physics ray, so a barricade or a door leaf hides it from your light. The moon is a
+  low, cold spot behind every window, each with its own shadow map (redrawn only while something moves).
+- **Physics.** Rapier 3D: the walls and big furniture are static colliders, the boxes dynamic bodies with
   cardboard-on-wood friction, and the creature a 75 kg capsule that is only ever moved by forces (2 kN on its way
   somewhere, 650 N when creeping up on you), so walls and furniture stop it and boxes are shoved, not passed through. Your hand is a spring
   with a 380 N limit. Impacts make a thump scaled by the contact force.
@@ -98,8 +104,10 @@ Then open http://localhost:5175.
 - `src/haunt/`: the three.js scene (`scene.js`), flashlight, dust, haze, post-processing, physics and boxes, the
   camera, the creature's events and hunt, and the sound. `layout.js` holds the room's dimensions, and `SPEC.md` the contract the assets follow.
 - `src/desktop/`: the fake macOS desktop in plain DOM and CSS, shared with Desktop Roomba.
-- `blender/room.py` and `room_tex.py`: build the room, corridor and props procedurally, generate every texture with
-  numpy (nothing downloaded), bake ambient occlusion and export `public/models/room.glb`.
+- `blender/hallway.py` and `hall_tex.py`: build the hallway, side rooms, doors, windows and props procedurally,
+  generate every texture with numpy (nothing downloaded), bake ambient occlusion, write the collision boxes and the
+  door, room and window markers, and export `public/models/hallway.glb`. `room.py` / `room_tex.py` built the first
+  version (a single room) and supply shared textures.
 - `blender/mixamo.py`: turns Mixamo FBX downloads into `public/models/creature.glb` and `creature.json`.
 - `scripts/fake-desktop.py`: makes the made-up desktop files and renders their real Finder icons.
 

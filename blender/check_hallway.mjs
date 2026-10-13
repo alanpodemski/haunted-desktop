@@ -58,7 +58,7 @@ for (const n of j.nodes) {
 const tex = (ti) => (ti === undefined ? null : j.textures[ti.index]);
 const imgOf = (ti) => { const t = tex(ti); return t ? `${j.images[t.source].name}` : '-'; };
 console.log('materials:');
-const NOMAPS = ['Brass', 'Bakelite', 'Cord_Fabric', 'Glass_Milk', 'Glass_Shard'];
+const NOMAPS = ['Brass', 'Bakelite', 'Cord_Fabric', 'Glass_Milk', 'Glass_Shard', 'Cobweb', 'Decal_Grime'];
 for (const m of j.materials) {
   const p = m.pbrMetallicRoughness || {};
   const occ = m.occlusionTexture ? `${imgOf(m.occlusionTexture)} uv${m.occlusionTexture.texCoord || 0}` : '-';

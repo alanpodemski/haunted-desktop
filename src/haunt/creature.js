@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { ROOM, DOOR, CORRIDOR, CORRIDOR_LANE_Z } from './layout.js';
+import { HALL } from './layout.js';
 
 const DEFAULT_META = {
   run: { speed: 5.6, duration: 0.62 },
@@ -136,16 +136,7 @@ function standInActor(meta) {
 }
 
 // ----------------------------------------------------------------------------------------- geometry helpers
-const DOOR_X0 = DOOR.cx - DOOR.w / 2, DOOR_X1 = DOOR.cx + DOOR.w / 2;
 const v3 = () => new THREE.Vector3();
-
-/** is the straight line from a (in the room) to b visible, i.e. not blocked by the back wall? */
-function seenThroughDoor(a, b) {
-  if (b.z > ROOM.z0) return true;
-  const t = (ROOM.z0 - a.z) / (b.z - a.z);
-  const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
-  return x > DOOR_X0 + 0.02 && x < DOOR_X1 - 0.02 && y < DOOR.h - 0.02;
-}
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (weights) => {
@@ -156,7 +147,7 @@ const pick = (weights) => {
 };
 
 // ----------------------------------------------------------------------------------------- controller
-export async function createCreature(scene, loader, { flashlight, camera, sound, physics, boxes, onEvent, onJumpscare, onBlackout, onReturn } = {}) {
+export async function createCreature(scene, loader, { flashlight, camera, sound, physics, boxes, nav, onEvent, onJumpscare, onBlackout, onReturn } = {}) {
   const actor = await loadActor(loader);
   const { root, meta } = actor;
   root.visible = false;
@@ -197,10 +188,31 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   let items = null;                           // candles, flares, salt, music boxes (set after creation)
   let baitBox = null, baitSeen = new Map();   // box id -> when it was first seen lying in the corridor
   const taken = [];                            // files it carried off, and when they come back
-  let last = null, lastRoomRun = -1e9, count = 0;
+  let last = null, count = 0;
   const tmp = v3(), head = v3(), chest = v3();
 
   const faceAngle = (dx, dz) => Math.atan2(dx, dz);   // model faces +Z
+
+  /** line of sight between two points: walls, door leaves, furniture and your boxes all block it */
+  function seenThroughDoor(a, b) {
+    if (!physics) return true;
+    const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, L = Math.hypot(dx, dy, dz);
+    if (L < 0.3) return true;
+    return physics.cast([a.x, a.y, a.z], [dx / L, dy / L, dz / L], L).dist >= L - 0.3;
+  }
+
+  // ---- the hallway: doors (from the environment's Door_* / Inside_* empties)
+  const doors = nav.doors;
+  const out = (d, k) => [d.door.x + d.into.x * k, d.door.z + d.into.z * k];   // k > 0: into the hallway
+  const exitPath = (d) => [[d.inside.x, d.inside.z], out(d, -0.3), out(d, 0.75)];
+  const enterPath = (d) => [out(d, 0.75), out(d, -0.3), [d.inside.x, d.inside.z]];
+  const pickDoor = (f = () => true) => { const c = doors.filter(f); return c[Math.floor(Math.random() * c.length)] || doors[0]; };
+  const nearestDoor = (p, f = () => true) => doors.filter(f).reduce((best, d) => {
+    const dd = Math.hypot(d.door.x - p.x, d.door.z - p.z);
+    return !best || dd < best.dd ? { d, dd } : best;
+  }, null)?.d || doors[0];
+  const inSideRoom = (p) => p.x < HALL.x0 - 0.05 || p.x > HALL.x1 + 0.05;
+  if (boxes) boxes.setBaitTest((p) => inSideRoom(p) || doors.some((d) => Math.hypot(d.door.x - p.x, d.door.z - p.z) < 1.2));
   const place = (x, z, yaw) => {
     root.position.set(x, 0, z); root.rotation.set(0, yaw, 0); root.visible = true;
     setDynamic(true); drive.force = WALK_FORCE;
@@ -302,127 +314,97 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     }
   }
 
-  /** walk or drag along the corridor lane past the doorway; if the beam catches it, it screams and runs */
-  function* slowPass(clip) {
-    const dir = Math.random() < 0.5 ? 1 : -1;
-    const span = clip === 'walk' ? 1.7 : 1.3;
-    const x0 = DOOR.cx - dir * span, x1 = DOOR.cx + dir * (span + 0.6);
-    const z = CORRIDOR_LANE_Z + rand(-0.05, 0.2);
-    place(x0, z, faceAngle(dir, 0));
-    actor.play(clip, { fade: 0 });
-    const v = meta[clip].speed;
-    let seen = 0;
-    const g = travel([[x0, z], [x1, z]], clip, { speed: v, startSpeed: v });
-    g.next();
-    while (true) {
-      const dt = yield;
-      if (g.next(dt).done) break;
-      seen = litness() > 0.2 ? seen + dt : Math.max(0, seen - dt);
-      if (seen > 0.35) {
-        yield* screamAtYou();
-        actor.play('run', { fade: 0.15 });
-        const xe = dir > 0 ? CORRIDOR.x1 - 0.4 : CORRIDOR.x0 + 0.4;
-        yield* travel([[root.position.x, root.position.z], [root.position.x + dir * 0.4, CORRIDOR_LANE_Z], [xe, CORRIDOR_LANE_Z]], 'run', { startSpeed: 1, accel: 10 });
-        return;
-      }
-    }
+  /** caught on the way somewhere: it screams at you and runs into the nearest room */
+  function* bolt() {
+    scared = false;
+    yield* screamAtYou();
+    actor.play('run', { fade: 0.15 });
+    const d = nearestDoor(root.position);
+    yield* travel([[root.position.x, root.position.z], ...enterPath(d)], 'run', { startSpeed: 1, accel: 10 });
   }
+
+  /** from one room across or along the hallway into another; the beam on it makes it bolt */
+  function* roomToRoom(a, b, clip, speed) {
+    place(a.inside.x, a.inside.z, faceAngle(a.into.x, a.into.z));
+    actor.play(clip, { fade: 0 });
+    const path = [...exitPath(a), ...enterPath(b)];
+    const ok = yield* travelWatchful(path, clip, speed, () => litness() > 0.2);
+    if (!ok) yield* bolt();
+  }
+  const across = (a) => doors.filter((d) => d.side !== a.side).sort((x, y) => Math.abs(x.door.z - a.door.z) - Math.abs(y.door.z - a.door.z))[0];
 
   // ---- events
   const EVENTS = {
-    /** shuffles past the doorway, slowly */
-    *walk() { yield* slowPass(actor.has('walk') ? 'walk' : 'run'); },
-    /** drags itself across the corridor floor */
-    *drag() { yield* slowPass(actor.has('drag') ? 'drag' : 'crawl'); },
-    /** sprint past the doorway */
+    /** out of one room and straight across the hallway into the room opposite */
+    *cross() {
+      const a = pickDoor(), b = across(a);
+      const run = Math.random() < 0.35;
+      yield* roomToRoom(a, b, run ? 'run' : 'walk', run ? meta.run.speed : meta.walk.speed * 2.4);
+    },
+    /** out of a room and along the hallway, to a room further down or nearer you */
+    *wander() {
+      const a = pickDoor();
+      const b = pickDoor((d) => d !== a && Math.abs(d.door.z - a.door.z) > 3) || across(a);
+      yield* roomToRoom(a, b, 'walk', meta.walk.speed * 2);
+    },
+    /** a sprint across, far down the hallway */
     *dash() {
-      const dir = Math.random() < 0.5 ? 1 : -1;
-      const x0 = dir > 0 ? CORRIDOR.x0 + 0.5 : CORRIDOR.x1 - 0.5, x1 = dir > 0 ? CORRIDOR.x1 - 0.4 : CORRIDOR.x0 + 0.4;
-      const z = CORRIDOR_LANE_Z + rand(-0.15, 0.2);
-      place(x0, z, faceAngle(dir, 0));
-      actor.play('run', { fade: 0 });
-      yield* travel([[x0, z], [x1, z]], 'run', { startSpeed: meta.run.speed * 0.8 });
+      const a = pickDoor((d) => d.door.z < -5), b = across(a);
+      yield* roomToRoom(a, b, 'run', meta.run.speed);
     },
-    /** on all fours, fast and low */
+    /** across on all fours */
     *crawl() {
-      const dir = Math.random() < 0.5 ? 1 : -1;
-      const x0 = dir > 0 ? CORRIDOR.x0 + 0.5 : CORRIDOR.x1 - 0.5, x1 = dir > 0 ? CORRIDOR.x1 - 0.4 : CORRIDOR.x0 + 0.4;
-      const z = CORRIDOR_LANE_Z + rand(-0.1, 0.25);
-      place(x0, z, faceAngle(dir, 0));
-      actor.play(actor.has('crawl') ? 'crawl' : 'run', { fade: 0 });
+      const a = pickDoor((d) => d.door.z < -4), b = across(a);
       const clip = actor.has('crawl') ? 'crawl' : 'run';
-      yield* travel([[x0, z], [x1, z]], clip);
+      yield* roomToRoom(a, b, clip, meta[clip].speed);
     },
-    /** leans out from behind the left jamb, stares, pulls back (faster if the beam catches it) */
+    /** stands just inside a doorway, half out, watching you; the beam sends it back in */
     *peek() {
-      if (!actor.has('peek')) return yield* EVENTS.watch();
-      place(DOOR_X0 - 0.32, ROOM.z0 - 0.42, faceAngle(camera.position.x - DOOR_X0, camera.position.z - ROOM.z0) * 0.5);
-      const dur = actor.play('peek', { loop: false, fade: 0 });
-      let t = 0, caught = false;
-      while (t < dur) {
-        const dt = yield;
-        t += dt * (caught ? 3 : 1);
-        if (!caught && litness() > 0.25) { caught = true; actor.setTimeScale(3); sound && sound.sting(0.5); flashlight.stutter(0.35); }
-        actor.setEyeGlow(eyeGlow());
-      }
-      // you hear it leave
-      root.visible = false;
-      yield* wait(0.25);
-      for (let i = 0; i < 6; i++) { sound && sound.footstep({ pos: new THREE.Vector3(DOOR_X0 - 1 - i * 0.6, 0, CORRIDOR_LANE_Z), kind: 'run', occluded: true, gain: 0.8 }); yield* wait(0.16); }
-    },
-    /** stands just inside the doorway in the dark; bolts when the beam lands on it */
-    *watch() {
-      const x = DOOR.cx + rand(-0.12, 0.12), z = ROOM.z0 - rand(0.35, 0.7);
-      place(x, z, faceAngle(camera.position.x - x, camera.position.z - z));
+      const d = pickDoor((x) => x.door.z < -3);
+      const [px, pz] = out(d, -0.3);
+      place(px, pz, faceAngle(camera.position.x - px, camera.position.z - pz));
+      setDynamic(false);                 // it stands still against the jamb
       actor.play('idle', { fade: 0 });
       let seen = 0, t = 0;
-      const patience = rand(9, 16);
+      const patience = rand(8, 14);
       while (t < patience) {
         const dt = yield; t += dt;
-        const l = litness();
         actor.setEyeGlow(eyeGlow());
-        seen = l > 0.2 ? seen + dt : Math.max(0, seen - dt * 0.5);
-        if (seen > 0.14) break;
+        seen = litness() > 0.2 ? seen + dt : Math.max(0, seen - dt * 0.5);
+        if (seen > 0.15) break;
       }
-      const caught = seen > 0.14;
-      if (caught) yield* screamAtYou();
-      // the turn and the first strides
-      const dir = Math.random() < 0.5 ? 1 : -1;
-      if (actor.has('flee') && dir > 0) {
-        const dur = actor.play('flee', { loop: false, fade: 0.08, timeScale: caught ? 1.15 : 0.9 });
-        let ft = 0; const x0 = root.position.x;
-        const yaw0 = root.rotation.y;
-        while (ft < dur) {
-          const dt = yield; ft += dt * (caught ? 1.15 : 0.9);
-          // it starts moving in the last part of the clip, accelerating towards run speed
-          const u = THREE.MathUtils.smoothstep(ft / dur, 0.45, 1);
-          root.position.x = x0 + 0.5 * meta.run.speed * u * u * dur * 0.55;
-          root.rotation.y = yaw0 * (1 - u);
-          footsteps();
-        }
-        root.rotation.y = faceAngle(1, 0);
-        actor.play('run', { fade: 0 });
-        yield* travel([[root.position.x, root.position.z], [root.position.x + 0.6, CORRIDOR_LANE_Z], [CORRIDOR.x1 - 0.4, CORRIDOR_LANE_Z]], 'run', { startSpeed: meta.run.speed * 0.7 });
-      } else {
-        actor.play('run', { fade: 0.12 });
-        yield* travel([[root.position.x, root.position.z], [root.position.x + dir * 0.5, CORRIDOR_LANE_Z], [dir > 0 ? CORRIDOR.x1 - 0.4 : CORRIDOR.x0 + 0.4, CORRIDOR_LANE_Z]], 'run', { startSpeed: 1.5, accel: 18 });
-      }
+      setDynamic(true);
+      if (seen > 0.15) { yield* screamAtYou(); actor.play('run', { fade: 0.15 }); yield* travel([[root.position.x, root.position.z], [d.inside.x, d.inside.z]], 'run', { startSpeed: 1 }); }
+      else { actor.play('walk', { fade: 0.3 }); yield* travel([[root.position.x, root.position.z], [d.inside.x, d.inside.z]], 'walk', { speed: meta.walk.speed * 1.5 }); }
     },
-    /**
-     * The hunt. It comes in through the doorway towards you, but only while it is not lit: in the beam it freezes
-     * mid-step. In the dark (torch off, or flickering) it runs. Boxes in its way are pushed with a limited force;
-     * if they hold, it beats at them. A camera flash in its face drives it back out. If it reaches you, it gets you.
-     */
+    /** a figure at the far end, against the window; when it is found it walks into the last room */
+    *endwatch() {
+      const x = rand(-0.35, 0.35), z = nav.end.z + 0.6;
+      place(x, z, faceAngle(camera.position.x - x, camera.position.z - z));
+      setDynamic(false);
+      actor.play('idle', { fade: 0 });
+      let seen = 0, t = 0;
+      const patience = rand(10, 18);
+      while (t < patience) {
+        const dt = yield; t += dt;
+        actor.setEyeGlow(eyeGlow());
+        seen = litness() > 0.12 ? seen + dt : Math.max(0, seen - dt * 0.5);
+        if (seen > 0.6) break;
+      }
+      setDynamic(true);
+      const d = nearestDoor(root.position);
+      actor.play('walk', { fade: 0.3 });
+      yield* travel([[root.position.x, root.position.z], ...enterPath(d)], 'walk', { speed: meta.walk.speed * (seen > 0.6 ? 2.6 : 1.4) });
+    },
     *hunt() {
       hunting = true; stunned = false;
       sound && sound.drone(true);
       flashlight.stutter(0.9);
-      // it comes down the corridor from one end (you hear it first), turns in at the doorway and comes for you;
-      // whatever you piled in the doorway is in its way
-      const side = Math.random() < 0.5 ? -1 : 1;
-      const x = side < 0 ? CORRIDOR.x0 + 0.5 : CORRIDOR.x1 - 0.5;
-      place(x, CORRIDOR_LANE_Z, faceAngle(-side, 0));
+      // it comes out of one of the far rooms and down the hallway at you; whatever you piled up is in its way
+      const from = pickDoor((d) => d.door.z < -6);
+      place(from.inside.x, from.inside.z, faceAngle(from.into.x, from.into.z));
       drive.force = HUNT_FORCE;
+      const leave = exitPath(from).slice(1);         // waypoints out of its room
       let grace = 0;
       let flicker = rand(4, 7), blocked = 0, clip = null, detour = 0, detourSide = 1;
       while (true) {
@@ -437,32 +419,30 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
           drive.speed = 0; actor.setTimeScale(0); blocked = 0;
           continue;
         }
-        // you are still building: it waits in the corridor, out of sight beside the doorway, shuffling
-        // (at most ~25 s per hunt, so it cannot be held off for ever)
-        if (building() && grace < 25 && root.position.z < ROOM.z0 - 0.15) {
+        // you are still building: it waits in its room, out of sight (at most ~25 s per hunt)
+        if (building() && grace < 25 && leave.length === 2) {
           grace += dt;
-          const hold = DOOR.cx + side * 1.5;
-          const off = hold - root.position.x;
-          if (Math.abs(off) > 0.15) { drive.x = Math.sign(off); drive.z = (CORRIDOR_LANE_Z - root.position.z); drive.speed = meta.walk.speed * 2; if (clip !== 'walk') { actor.play('walk', { fade: 0.3 }); clip = 'walk'; } }
-          else { drive.speed = 0; if (clip !== 'idle') { actor.play('idle', { fade: 0.4 }); clip = 'idle'; } }
-          footsteps(0.5);
+          drive.speed = 0;
+          if (clip !== 'idle') { actor.play('idle', { fade: 0.4 }); clip = 'idle'; }
           continue;
         }
         const dark = !flashlight.on || flashlight.output < 0.13;
         const want = dark ? 'run' : 'walk';
         if (clip !== want) { actor.play(want, { fade: 0.25 }); clip = want; }
         const speed = dark ? meta.run.speed : meta.walk.speed * 2.3;
-        // along the corridor to the doorway, through it, then straight at you; a music box playing comes first
-        const inCorridor = root.position.z < ROOM.z0 - 0.15;
-        const lined = Math.abs(root.position.x - DOOR.cx) < 0.18;
+        // out of its room, then down the hallway at you; a music box playing comes first (through its doorway if
+        // it is in a side room)
         const lure = items && items.lure();
-        const lureInRoom = lure && lure.pos.z > ROOM.z0;
         let tx, tz;
-        // inside, it first steps clear of the doorway (the dresser and the bed crowd it), then heads for its goal
-        if (inCorridor && !lined && !(lure && !lureInRoom)) { tx = DOOR.cx; tz = CORRIDOR_LANE_Z + 0.25; }
-        else if (lure && lureInRoom === !inCorridor && !(lureInRoom && root.position.z < ROOM.z0 + 1.1)) { tx = lure.pos.x; tz = lure.pos.z; }
-        else if (root.position.z < ROOM.z0 + 1.1) { tx = DOOR.cx + 0.15; tz = ROOM.z0 + 1.4; }
-        else { tx = camera.position.x; tz = camera.position.z - 0.2; }
+        if (leave.length) {
+          [tx, tz] = leave[0];
+          if (Math.hypot(tx - root.position.x, tz - root.position.z) < 0.4) { leave.shift(); continue; }
+        } else if (lure) {
+          const ld = inSideRoom(lure.pos) ? nearestDoor(lure.pos) : null;
+          const meIn = inSideRoom(root.position);
+          if (ld && !meIn && Math.hypot(...out(ld, 0.5).map((v, i) => v - (i ? root.position.z : root.position.x))) > 0.4) [tx, tz] = out(ld, 0.5);
+          else { tx = lure.pos.x; tz = lure.pos.z; }
+        } else { tx = camera.position.x; tz = camera.position.z - 0.2; }
         if (detour > 0) {
           // walking round something solid: aim off to the side for a moment
           detour -= dt;
@@ -519,56 +499,34 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       const b = baitBox; baitBox = null;
       if (!b || !boxes.boxes.has(b.id)) return;
       const bt = b.body.translation();
-      // it comes from the end the box is farther from, so it crosses the doorway on the way
-      const from = bt.x < DOOR.cx ? CORRIDOR.x1 - 0.5 : CORRIDOR.x0 + 0.5;
-      const leave = bt.x < DOOR.cx ? CORRIDOR.x0 + 0.4 : CORRIDOR.x1 - 0.4;
-      const z = CORRIDOR_LANE_Z;
-      const dir = Math.sign(bt.x - from);
-      const stopX = bt.x - dir * (0.45 + b.size.w / 2);
-      place(from, z, faceAngle(dir, 0));
+      const d = nearestDoor(bt);
+      place(d.inside.x, d.inside.z, faceAngle(d.into.x, d.into.z));
       const quick = meta.walk.speed * 2.6;
       actor.play('walk', { fade: 0 });
-      yield* travelWatchful([[from, z], [stopX, z]], 'walk', quick, () => litness() > 0.2);
-      if (scared) { scared = false; yield* screamAtYou(); actor.play('run', { fade: 0.15 }); yield* travel([[root.position.x, z], [from, z]], 'run', { startSpeed: 1 }); return; }
-      // pick it up
-      const turnTo = faceAngle(bt.x - root.position.x, bt.z - root.position.z);
-      root.rotation.y = turnTo;
+      // to the box: through its doorway unless the box is in the room with it
+      const reach = (b.size.w / 2) + 0.45;
+      const dx = bt.x - d.inside.x, dz = bt.z - d.inside.z, dd = Math.hypot(dx, dz) || 1;
+      const stop = [bt.x - dx / dd * reach, bt.z - dz / dd * reach];
+      const path = inSideRoom(bt) && Math.sign(bt.x) === Math.sign(d.inside.x) ? [[d.inside.x, d.inside.z], stop] : [[d.inside.x, d.inside.z], out(d, -0.3), stop];
+      yield* travelWatchful(path, 'walk', quick, () => litness() > 0.2);
+      if (scared) { yield* bolt(); return; }
+      root.rotation.y = faceAngle(bt.x - root.position.x, bt.z - root.position.z);
       const dur = actor.play(actor.has('attack') ? 'attack' : 'idle', { loop: false, fade: 0.2 });
       let t = 0, held = false;
       const p = new THREE.Vector3(), q = new THREE.Quaternion();
+      const hold = () => { actor.carryPos(p); q.setFromEuler(new THREE.Euler(0, root.rotation.y, 0)); boxes.holdAt(b, p, q); };
       while (t < Math.min(dur, 1.6)) {
         const dt = yield; t += dt;
         if (!held && t > 0.55) { held = true; boxes.carry(b); sound && sound.thud({ pos: root.position.clone(), strength: 0.5, size: b.size.t }); }
-        if (held) { actor.carryPos(p); q.setFromEuler(new THREE.Euler(0, root.rotation.y, 0)); boxes.holdAt(b, p, q); }
+        if (held) hold();
       }
-      // off into the dark with it
       actor.play('walk', { fade: 0.25 });
-      const ok = yield* travelWatchful([[root.position.x, root.position.z], [leave, z]], 'walk', quick, () => litness() > 0.2, () => {
-        actor.carryPos(p); q.setFromEuler(new THREE.Euler(0, root.rotation.y, 0)); boxes.holdAt(b, p, q);
-      });
-      if (!ok) {
-        boxes.letGo(b); scared = false;
-        yield* screamAtYou();
-        actor.play('run', { fade: 0.15 });
-        yield* travel([[root.position.x, z], [leave, z]], 'run', { startSpeed: 1 });
-        return;
-      }
+      const back = inSideRoom(root.position) ? [[root.position.x, root.position.z], [d.inside.x, d.inside.z]] : [[root.position.x, root.position.z], ...enterPath(d)];
+      const ok = yield* travelWatchful(back, 'walk', quick, () => litness() > 0.2, hold);
+      if (!ok) { boxes.letGo(b); yield* bolt(); return; }
       boxes.consume(b);
       taken.push({ id: b.id, at: performance.now() / 1000 + rand(25, 45) });
-      // while it is busy with that, it is not coming for you
-      nextHuntAt = Math.max(nextHuntAt, performance.now() / 1000 + 45);
-    },
-    /** rare: comes through the doorway and runs past you, out of view to the left */
-    *intrude() {
-      const x0 = CORRIDOR.x0 + 0.6;
-      place(x0, CORRIDOR_LANE_Z, faceAngle(1, 0));
-      actor.play('run', { fade: 0 });
-      flashlight.stutter(1.2);
-      yield* travel([
-        [x0, CORRIDOR_LANE_Z], [DOOR.cx - 0.5, CORRIDOR_LANE_Z], [DOOR.cx, ROOM.z0 - 0.2],
-        [DOOR.cx, ROOM.z0 + 1.4], [-0.9, -1.5], [-1.5, -0.1],
-      ], 'run', { startSpeed: meta.run.speed * 0.8, turnRate: 7 });
-      sound && sound.sting(0.7);
+      nextHuntAt = Math.max(nextHuntAt, performance.now() / 1000 + 45);   // busy with that, not coming for you
     },
   };
 
@@ -621,8 +579,9 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     yield* screamAtYou();
     actor.play('run', { fade: 0.15 });
     const p = root.position;
-    const way = p.z > ROOM.z0 + 1.1 ? [[p.x, p.z], [DOOR.cx + 0.15, ROOM.z0 + 1.4]] : [[p.x, p.z]];
-    yield* travel([...way, [DOOR.cx, ROOM.z0 + 0.5], [DOOR.cx, CORRIDOR_LANE_Z], [CORRIDOR.x1 - 0.4, CORRIDOR_LANE_Z]], 'run', { startSpeed: 1, accel: 12 });
+    // into the nearest room that is not behind you
+    const d = nearestDoor(p, (x) => x.door.z < p.z + 0.5) || nearestDoor(p);
+    yield* travel([[p.x, p.z], ...enterPath(d)], 'run', { startSpeed: 1, accel: 12 });
   }
 
   /** it reached you */
@@ -673,26 +632,25 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     job = EVENTS[name](); jobName = name;
     job.next();      // run to the first yield
     count++; last = name;
-    if (name === 'intrude') lastRoomRun = performance.now() / 1000;
     onEvent && onEvent(name);
     return true;
   }
 
   function schedule() {
     const now = performance.now() / 1000;
-    const w = { dash: 26, crawl: 14, walk: 16, drag: 10, peek: 12, watch: 18, intrude: 6 };
+    const w = { cross: 28, wander: 18, dash: 10, crawl: 9, peek: 16, endwatch: 12 };
     if (!actor.has('peek')) delete w.peek;
-    if (count < 1) { start('dash'); return; }
+    if (count < 1) { start('cross'); return; }
     if (now >= nextHuntAt) { start('hunt'); return; }
-    if (count < 3 || now - lastRoomRun < 90) delete w.intrude;
     if (last && w[last] && last !== 'dash') w[last] *= 0.3;
     start(pick(w));
   }
 
   const SPOTS = [
     // places to stand in a photo it was not in: behind the bed, in the doorway, much too close, the far corner
-    () => [ROOM.x0 + 0.55, -2.3], () => [DOOR.cx + rand(-0.1, 0.1), ROOM.z0 - 0.25],
-    () => [camera.position.x - 0.95, camera.position.z - 1.25], () => [ROOM.x1 - 0.5, ROOM.z0 + 0.5],
+    // in a doorway, at the far window, much too close on your left, by the first door on the right
+    () => out(pickDoor(), -0.15), () => [rand(-0.3, 0.3), nav.end.z + 0.6],
+    () => [camera.position.x - 0.95, camera.position.z - 1.6], () => [0.85, -3.6],
   ];
 
   return {
@@ -718,6 +676,17 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       ghost.update(rand(0.5, 3.5));
       ghost.root.visible = true;
       ghost.root.updateMatrixWorld(true);
+      return () => { ghost.root.visible = false; };
+    },
+    /** lightning: for the length of the flash it may be standing at the far end, or in a far doorway */
+    stageForLightning() {
+      if (job || hunting || Math.random() > 0.4) return null;
+      const far = Math.random() < 0.5;
+      const [x, z] = far ? [rand(-0.3, 0.3), nav.end.z + 0.7] : out(pickDoor((d) => d.door.z < -7), -0.1);
+      ghost.root.position.set(x, 0, z);
+      ghost.root.rotation.set(0, faceAngle(camera.position.x - x, camera.position.z - z), 0);
+      ghost.play('idle', { fade: 0 }); ghost.update(rand(0.5, 3.5));
+      ghost.root.visible = true; ghost.root.updateMatrixWorld(true);
       return () => { ghost.root.visible = false; };
     },
     /** before each physics step: kinematic follow, or the hunting drive */
