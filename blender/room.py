@@ -1484,9 +1484,10 @@ def previews(only=None):
 
 FLASH_W = 450.0
 
-if "--preview-only" in ARGS:
-    bpy.ops.wm.open_mainfile(filepath=os.path.join(TEXDIR, "room_build.blend"))
-    only = [a for a in ARGS if not a.startswith("--")]
-    previews(only or None)
-else:
-    main()
+if __name__ == "__main__":     # hallway.py imports this module for its helpers
+    if "--preview-only" in ARGS:
+        bpy.ops.wm.open_mainfile(filepath=os.path.join(TEXDIR, "room_build.blend"))
+        only = [a for a in ARGS if not a.startswith("--")]
+        previews(only or None)
+    else:
+        main()

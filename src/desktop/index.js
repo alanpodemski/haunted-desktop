@@ -256,6 +256,19 @@ export async function createDesktop(root, opts = {}) {
     el('div', 'dk-mb-item', mbLeft).textContent = t;
   }
   const mbRight = el('div', 'dk-mb-right', menubar);
+  let batteryEl = null;
+  /** live battery level: the percentage and a continuous fill, red at 10 % and below, as macOS draws it */
+  const setBattery = (pct) => {
+    if (!batteryEl) return;
+    pct = Math.max(0, Math.min(100, Math.round(pct)));
+    if (batteryEl.dataset.pct === String(pct)) return;
+    batteryEl.dataset.pct = String(pct);
+    batteryEl.innerHTML = '';
+    el('span', 'dk-pct', batteryEl).textContent = `${pct}%`;
+    const g = el('span', 'dk-batt-svg', batteryEl);
+    g.innerHTML = GLYPHS.battery(Math.max(pct, 4));
+    g.classList.toggle('dk-batt-low', pct <= 10);
+  };
   const status = el('div', 'dk-mb-status', mbRight);
   {
     // A stock set of status items, in macOS's default order: battery with %, Wi‑Fi, Spotlight,
@@ -274,6 +287,7 @@ export async function createDesktop(root, opts = {}) {
     if (!system.battery || system.battery.present !== false) {
       const pct = Math.round((system.battery && system.battery.percent) ?? 100);
       const b = el('div', 'dk-mb-glyph dk-mb-battery', status);
+      batteryEl = b;
       el('span', 'dk-pct', b).textContent = `${pct}%`;
       const level = pct >= 88 ? 100 : pct >= 63 ? 75 : pct >= 38 ? 50 : pct >= 13 ? 25 : 0;
       const sym = symbols[`battery.${level}percent`];
@@ -670,6 +684,15 @@ export async function createDesktop(root, opts = {}) {
     /** double-click on an icon */
     onIconOpen(cb) { cbs.open.push(cb); return () => cbs.open.splice(cbs.open.indexOf(cb), 1); },
     getIcon(id) { const r = icons.get(id); return r ? publicIcon(r) : null; },
+    /** new label (and optionally a new icon image) for an existing item */
+    renameIcon(id, name, iconSrc) {
+      const r = icons.get(id); if (!r) return;
+      r.name = name;
+      const label = r.node.querySelector('.dk-icon-label');
+      label.innerHTML = '';
+      for (const ln of layoutLabel(name)) el('span', 'dk-line', label).textContent = ln;
+      if (iconSrc) { r.node.querySelector('img').src = iconSrc; r.iconSrc = iconSrc; }
+    },
     setIconHidden(id, hidden) { const r = icons.get(id); if (r) setHidden(r, hidden); },
     /** bring a hidden icon back, snapped to the free cell nearest to (x, y) */
     returnIcon(id, x, y) { const r = icons.get(id); if (r) returnIcon(r, x, y); },
@@ -697,6 +720,7 @@ export async function createDesktop(root, opts = {}) {
       setTimeout(() => { for (const r of icons.values()) r.node.classList.remove('dk-thrown'); }, 700);
     },
     setClock,
+    setBattery,
     /** Element between the wallpaper and the icons for things lying on the floor (cake smear).
      *  Full-page, position:absolute, pointer-events:none; put a canvas inside it. */
     getFloorLayer() { return floorLayer; },

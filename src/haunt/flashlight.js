@@ -70,6 +70,16 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
   const ndc = new THREE.Vector2(0.02, 0.05);
   let yaw = 0, pitch = 0, vyaw = 0, vpitch = 0, initialised = false;
   let on = true, level = 1, flicker = 0, t = 0;
+  // ---- the batteries: two old alkaline cells. Charge Q drains while the bulb burns (~7 min from full); a
+  // polarisation sag P builds up with continuous use and recovers when the torch rests, and a rested alkaline
+  // cell also creeps back a little. Terminal voltage V (normalised) is flat until the cells are nearly empty.
+  // An incandescent bulb's light goes as V^3.4 and its colour cools as the filament runs colder.
+  const LIFE = 420;
+  let charge = 1, sag = 0, volts = 1, output = 1, nextContact = 6;
+  const warm = new THREE.Color(0xffa860), white = new THREE.Color(0xfff1dc);
+  // a loose contact in the switch: it drops out now and then, more often as the cells fail; a hard shake
+  // (fast mouse back and forth) reseats it, as smacking a torch does
+  let lastNdc = null, lastNdcT = 0, shakeEnergy = 0;
   const ray = new THREE.Raycaster();
   const dir = new THREE.Vector3();
   const tmp = new THREE.Vector3();
@@ -87,7 +97,21 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
     spot, bounce,
     get on() { return on; },
     /** cursor in normalised device coordinates */
-    setPointer(x, y) { ndc.set(x, y); },
+    setPointer(x, y) {
+      const now = performance.now() / 1000;
+      if (lastNdc) {
+        const dtp = Math.max(0.004, now - lastNdcT);
+        const v = Math.hypot(x - lastNdc.x, y - lastNdc.y) / dtp;   // screen widths per second, roughly
+        shakeEnergy = shakeEnergy * Math.exp(-dtp * 4) + (v > 4 ? v * dtp : 0);
+        if (shakeEnergy > 1.6 && flicker > 0) { flicker = 0; shakeEnergy = 0; nextContact = Math.max(nextContact, 3); }
+        lastNdc.set(x, y);
+      } else lastNdc = new THREE.Vector2(x, y);
+      lastNdcT = now;
+      ndc.set(x, y);
+    },
+    /** battery state: charge 0..1 (what the menu bar shows), light output 0..1 */
+    get battery() { return { charge, volts, output }; },
+    get output() { return output * level; },
     aimAt(p, snap = false) {
       tmp.copy(p).project(camera); ndc.set(tmp.x, tmp.y);
       if (snap) initialised = false;     // jump there this frame instead of swinging the arm
@@ -100,13 +124,13 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
     get pos() { return spot.position; },
     /** 0..1: how lit a world point is (cone falloff only, no shadows) */
     exposure(p) {
-      if (!on || level < 0.05) return 0;
+      if (!on || level * output < 0.05) return 0;
       tmp.copy(p).sub(spot.position);
       const d = tmp.length(); tmp.divideScalar(d);
       const c = tmp.dot(dir);
       const r = Math.acos(THREE.MathUtils.clamp(c, -1, 1)) / spot.angle; // 0 centre .. 1 cone edge
       if (r >= 1) return 0;
-      return level * (0.06 + 0.94 * Math.exp(-Math.pow(r / 0.42, 3))) * Math.min(1, 9 / (d * d));
+      return level * output * (0.06 + 0.94 * Math.exp(-Math.pow(r / 0.42, 3))) * Math.min(1, 9 / (d * d));
     },
     update(dt) {
       t += dt;
@@ -128,15 +152,32 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
       spot.target.position.copy(spot.position).addScaledVector(dir, 3);
       spot.target.updateMatrixWorld();
 
+      // the cells
+      if (on) { charge = Math.max(0, charge - dt / LIFE); sag += (0.05 - sag) * dt / 50; }
+      else { sag -= sag * dt / 12; charge = Math.min(1, charge + dt * 0.0025); }
+      volts = Math.max(0, 0.45 + 0.55 * Math.pow(charge, 0.3) - sag);
+      output = Math.pow(volts, 3.4);
+      spot.color.copy(white).lerp(warm, THREE.MathUtils.clamp((1 - volts) / 0.45, 0, 1));
+      // the loose contact: random drop-outs, a few a minute when fresh, every few seconds when nearly flat
+      if (on) {
+        nextContact -= dt * (1 + 9 * (1 - volts) / 0.55);
+        if (nextContact <= 0) {
+          flicker = Math.max(flicker, 0.06 + Math.random() * (Math.random() < 0.25 ? 0.7 : 0.25));
+          nextContact = 8 + Math.random() * 22;
+        }
+      }
+
       // brown-outs: the filament dims and recovers unevenly
       let target = on ? 1 : 0;
+      // contact chatter: a few percent of shimmer that grows as the cells sag
+      target *= 1 - (0.015 + 0.06 * (1 - volts)) * Math.abs(noise1(t * 55, 9));
       if (flicker > 0) {
         flicker -= dt;
         const n = noise1(t * 38, 7);
         target *= n > 0.25 ? 0.06 : 0.55 + 0.45 * Math.abs(noise1(t * 13, 8));
       }
       level += (target - level) * Math.min(1, dt * (on ? 40 : 60));
-      spot.intensity = candela * level;
+      spot.intensity = candela * level * output;
 
       // bounce light: hit point of the beam axis, re-emitted as a Lambertian source
       const h = castRoom([spot.position.x, spot.position.y, spot.position.z], [dir.x, dir.y, dir.z]);

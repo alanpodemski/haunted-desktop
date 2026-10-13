@@ -68,6 +68,7 @@ export function createPost(renderer, scene, camera, flashlight) {
   composer.addPass(new OutputPass());
   const sensor = new ShaderPass(SensorShader);
   composer.addPass(sensor);
+  const bufSize = new THREE.Vector2();
   return {
     composer, bloom, sensor, volume,
     setSize(w, h) {
@@ -84,6 +85,13 @@ export function createPost(renderer, scene, camera, flashlight) {
       sensor.uniforms.uRes.value.set(s.x, s.y);
     },
     render(time) {
+      // a page that boots in a hidden or zero-size tab gets zero-size targets; catch up as soon as it has a size
+      renderer.getDrawingBufferSize(bufSize);
+      const d = composer.renderTarget1.depthTexture;
+      if (bufSize.x > 0 && (composer.renderTarget1.width !== bufSize.x || composer.renderTarget1.height !== bufSize.y
+        || (d && (d.image.width !== bufSize.x || d.image.height !== bufSize.y)))) {
+        this.setSize(bufSize.x / renderer.getPixelRatio(), bufSize.y / renderer.getPixelRatio());
+      }
       sensor.uniforms.uTime.value = time;
       if (volume) volume.sync(time);
       composer.render();

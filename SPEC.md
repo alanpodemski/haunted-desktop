@@ -53,3 +53,47 @@ so the runtime can make them catch the flashlight. Animations (in place, no root
 - `flee` — sudden turn and first steps of a sprint; one shot, ends in a pose that blends into `run`
 Also write public/models/creature.json with `{ "run": { "speed": m/s }, "crawl": { "speed": m/s }, ... }`, the
 ground speed that matches each in-place cycle (so the feet do not skate).
+
+---
+
+# v2: the hallway (replaces the room)
+
+The scene becomes a long, abandoned hallway seen from one end. Doors on both sides open onto small dark rooms; the
+rooms have windows, so moonlight falls out of the open doorways onto the hallway floor in pale patches. At the far
+end is a tall window (lightning outside now and then). The creature moves from room to room across the hallway.
+
+## Layout (glTF space, metres, +Y up, camera looks down -Z)
+
+| Thing | Where |
+|---|---|
+| Hallway interior | x ∈ [-1.25, 1.25], y ∈ [0, 2.9], z ∈ [-14.0, 0.8] |
+| Camera | (0.3, 1.6, 0.2), looking at about (-0.1, 1.2, -14), vertical FOV ≈ 50° |
+| Side doorways | 0.9 m wide × 2.1 m clear opening, wooden casing both sides, wall thickness 0.14 m. Left wall (x = -1.25) at z = -2.6, -6.6, -10.6; right wall (x = +1.25) at z = -4.6, -8.6, -12.2 (z is the opening's centre). |
+| Side rooms | behind each doorway, about 2.6 m deep × 3 m wide, closed except for the doorway and one window on the far wall. Sparse furniture, dark. |
+| Door leaves | at least three doorways have an old panel door hanging open at different angles (one barely ajar, one wide open); the others are empty openings, one with the door torn off and lying in the hallway. Each leaf is its own node `DoorLeaf_<id>` with its pivot at the hinge axis so it can be swung at runtime. |
+| End window | far wall z = -14.0: a tall sash window, sill at 0.85 m, 1.1 m wide × 1.7 m tall, cracked glass panes, old frame. |
+| Outside | a simple night backdrop behind every window: dark sky with clouds, bare tree silhouettes; a separate mesh `Outside` (unlit/emissive-ish material, very dark) so it reads as night, not as a wall. |
+
+Keep the right edge of the frame (x > 0.9 near the camera) free of tall props: desktop icons sit there.
+
+## Props
+A worn runner carpet down the middle (stained, curling at the edges), wainscoting to ~1 m with peeling wallpaper above,
+crown moulding, picture frames (some crooked, one fallen), a side table with a dead plant, a radiator, a toppled chair, an
+old wheelchair or a gurney-like trolley near the far end, broken ceiling light fixtures every ~3 m, cobwebs, debris and
+papers. Side rooms: an iron bed, a wardrobe, a chair facing the window, curtains (tattered, alpha) at the windows.
+
+## Required node names (empties unless noted)
+- `Hallway` (shell, receive shadows), `SideRoom_L1`, `SideRoom_L2`, `SideRoom_L3`, `SideRoom_R1`, `SideRoom_R2`, `SideRoom_R3`.
+- `Door_L1` … `Door_R3`: an empty at each doorway's threshold centre, on the floor (y = 0), its local +Z pointing into
+  the hallway. `Inside_L1` … `Inside_R3`: an empty on the floor about 1.2 m inside each side room, centred on the
+  doorway (where something can stand unseen).
+- `Window_L1` … `Window_R3` and `Window_End`: an empty at the centre of each window opening (inside face), local -Z
+  pointing outwards (towards the moon). The runtime puts moonlight there.
+- `Empty_FlashlightTarget_Default`: on a wall about 6 m down the hallway.
+- `Colliders`: a parent node holding simple boxes (meshes named `COL_*`, invisible in the runtime) for walls, floor,
+  ceiling and big furniture, so the physics does not need the render mesh. Openings must stay open.
+
+## Materials
+Reuse the wallpaper, plaster, floorboard and trim textures from blender/room_tex.py (same quality bar), plus the new
+ones (carpet, door panels, window frames, glass with cracks and grime, curtains). Base colour, normal, roughness and
+baked AO (glTF occlusion, UV1) on everything. Output: public/models/hallway.glb (Draco, JPEG textures, ≤ 30 MB).

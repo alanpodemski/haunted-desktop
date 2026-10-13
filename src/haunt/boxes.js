@@ -4,7 +4,7 @@
 // lift and swing, heavy ones only slide, the way you would move them yourself.
 
 import * as THREE from 'three';
-import { castRoom, ROOM } from './layout.js';
+import { ROOM } from './layout.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const HAND_FORCE = 380;       // N: about what one arm pulls without bracing
@@ -101,7 +101,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
   const ndc = new THREE.Vector2();
   const v = new THREE.Vector3();
 
-  function make(icon, at) {
+  function make(icon, at, yawAt = null) {
     const s = sizeOf(icon.bytes);
     const img = new Image(); img.src = icon.icon || '';
     const plain = () => new THREE.MeshStandardMaterial({ map: faceTexture(icon.name, null), bumpMap: cardboardBump(), bumpScale: 0.6, roughness: 0.9 });
@@ -115,8 +115,10 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     // the sticker image may arrive after the first draw
     img.onload = () => { for (const i of [4, 5]) { mats[i].map.dispose(); mats[i].map = faceTexture(icon.name, img, { label: true }); mats[i].needsUpdate = true; } };
 
-    const yaw = (Math.random() - 0.5) * 0.8;
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler((Math.random() - 0.5) * 0.15, yaw, (Math.random() - 0.5) * 0.15));
+    // stacked boxes start square to the one below (a hand lines them up), others land at a random angle
+    const yaw = yawAt !== null ? yawAt + (Math.random() - 0.5) * 0.12 : (Math.random() - 0.5) * 0.8;
+    const tilt = yawAt !== null ? 0.02 : 0.15;
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler((Math.random() - 0.5) * tilt, yaw, (Math.random() - 0.5) * tilt));
     const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(at.x, at.y, at.z).setRotation(q)
       .setLinearDamping(0.05).setAngularDamping(0.2).setCcdEnabled(true));
@@ -139,15 +141,73 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     boxes.delete(b.id);
   }
 
-  /** where on the floor the cursor points, or null if it points at a wall or ceiling */
-  function floorUnder(clientX, clientY) {
+  /**
+   * Where a file dropped at the cursor would go, from a ray against everything solid (walls, furniture, boxes):
+   * - onto a box: on top of it, lined up with it (that is how you stack a barricade);
+   * - onto the floor or a piece of furniture's top: there;
+   * - onto a wall or the side of furniture: just in front of it at that height, so it falls onto whatever is below.
+   * The spot is raised until the new box does not overlap anything. Returns { pos, yaw, size } or null.
+   */
+  const tmpBox = new THREE.Box3();
+  function dropTarget(clientX, clientY, bytes) {
+    const s = sizeOf(bytes);
     ndc.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const o = ray.ray.origin, d = ray.ray.direction;
-    const hit = castRoom([o.x, o.y, o.z], [d.x, d.y, d.z]);
-    if (hit.normal[1] < 0.9) return null;
-    return new THREE.Vector3(hit.point[0], 0, hit.point[2]);
+    // the creature's capsule is the only kinematic body: leave it out of the ray
+    const creatureBody = physics.creatureBody;
+    const hit = world.castRayAndGetNormal(new RAPIER.Ray(o, d), 12, true, undefined, undefined, undefined, creatureBody);
+    if (!hit) return null;
+    const p = new THREE.Vector3(o.x + d.x * hit.timeOfImpact, o.y + d.y * hit.timeOfImpact, o.z + d.z * hit.timeOfImpact);
+    const n = hit.normal;
+    if (n.y < -0.7) return null;                              // the ceiling
+    const under = byHandle.get(hit.collider.handle);
+    let pos, yaw = null;
+    if (under) {
+      const t = under.body.translation();
+      tmpBox.setFromObject(under.mesh);
+      // centred over the box below, nudged towards where you aimed
+      pos = new THREE.Vector3(t.x + (p.x - t.x) * 0.3, tmpBox.max.y + s.h / 2 + 0.02, t.z + (p.z - t.z) * 0.3);
+      const r = under.body.rotation();
+      yaw = new THREE.Euler().setFromQuaternion(new THREE.Quaternion(r.x, r.y, r.z, r.w), 'YXZ').y;
+    } else if (n.y > 0.7) {
+      pos = new THREE.Vector3(p.x, p.y + s.h / 2 + 0.03, p.z);
+    } else {
+      const off = Math.max(s.w, s.d) / 2 + 0.04;
+      pos = new THREE.Vector3(p.x + n.x * off, Math.max(p.y, s.h / 2 + 0.03), p.z + n.z * off);
+    }
+    // never inside the corridor's far wall or out of the room's sides
+    pos.x = clamp(pos.x, ROOM.x0 + s.w / 2, ROOM.x1 - s.w / 2);
+    pos.y = Math.min(pos.y, 2.3);
+    // lift until it fits
+    const shape = new RAPIER.Cuboid(s.w / 2, s.h / 2, s.d / 2);
+    const rot = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw || 0, 0));
+    for (let i = 0; i < 30; i++) {
+      const overlap = world.intersectionWithShape(pos, rot, shape, undefined, undefined, undefined, physics.creatureBody);
+      if (!overlap) break;
+      pos.y += 0.04;
+    }
+    return { pos, yaw, size: s };
   }
+
+  // ghost of the box while a file is being dragged over the room
+  const ghost = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+    new THREE.LineBasicMaterial({ color: 0xfff3dc, transparent: true, opacity: 0.55, depthTest: false }));
+  ghost.renderOrder = 10;
+  ghost.visible = false;
+  scene.add(ghost);
+  let dragIcon = null;
+  desk.onIconDragStart((id) => { dragIcon = desk.getIcon(id); });
+  desk.onIconDragEnd(() => { dragIcon = null; ghost.visible = false; });
+  window.addEventListener('pointermove', (e) => {
+    if (!dragIcon) return;
+    const t = dropTarget(e.clientX, e.clientY, dragIcon.bytes);
+    ghost.visible = !!t;
+    if (!t) return;
+    ghost.scale.set(t.size.w, t.size.h, t.size.d);
+    ghost.position.copy(t.pos);
+    ghost.rotation.set(0, t.yaw || 0, 0);
+  }, true);
 
   // impacts: a box landing or being hit makes a hollow cardboard thump
   physics.onContactForce((e) => {
@@ -218,16 +278,15 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
   const q = new THREE.Quaternion(), wp = new THREE.Vector3();
   return {
     boxes,
-    floorUnder,
     /** a desktop icon dropped at (clientX, clientY): true if it became a box */
     drop(icon, clientX, clientY) {
-      const at = floorUnder(clientX, clientY);
-      if (!at) return false;
-      const s = sizeOf(icon.bytes);
-      at.y = s.h / 2 + 0.35;            // let go a little above the boards: it falls and settles
-      make(icon, at);
+      ghost.visible = false;
+      const t = dropTarget(clientX, clientY, icon.bytes);
+      if (!t) return false;
+      make(icon, t.pos, t.yaw);
       return true;
     },
+    dropTarget,
     /** called before every physics step: the hand's force on the grabbed box */
     beforeStep(dt) {
       if (!hand) return;
@@ -254,6 +313,34 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
         b.body.applyTorqueImpulse({ x: (Math.random() - 0.5) * impulse * 0.05, y: (Math.random() - 0.5) * impulse * 0.05, z: (Math.random() - 0.5) * impulse * 0.05 }, true);
       }
     },
+    /** boxes lying beyond the doorway, in the corridor, at rest: bait */
+    bait() {
+      const out = [];
+      for (const b of boxes.values()) {
+        if (b.carried) continue;
+        const t = b.body.translation();
+        if (t.z < ROOM.z0 - 0.25 && b.body.isSleeping()) out.push(b);
+      }
+      return out;
+    },
+    /** something picked the box up: it follows the hand it is given until consumed or dropped */
+    carry(b) {
+      b.carried = true;
+      if (hand && hand.b === b) hand = null;
+      b.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+    },
+    holdAt(b, pos, quat) {
+      b.body.setNextKinematicTranslation(pos);
+      b.body.setNextKinematicRotation(quat);
+    },
+    /** dropped (it was startled): falls from where it is */
+    letGo(b) {
+      b.carried = false;
+      b.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+      b.body.wakeUp();
+    },
+    /** gone into the dark: the box disappears, the file does not come back (yet) */
+    consume(b) { remove(b); },
     /** boxes whose centre is within r of the point (horizontal) */
     near(p, r) {
       const out = [];

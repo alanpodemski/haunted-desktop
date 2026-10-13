@@ -327,3 +327,7 @@
 
 /* icons thrown by a shockwave fly to their new spot instead of jumping */
 .dk-icon.dk-thrown { transition: transform 0.45s cubic-bezier(.2,.9,.25,1); }
+
+/* live battery glyph: macOS fills it red at 10 % and below */
+.dk-batt-svg { display: block; color: #fff; }
+.dk-batt-svg.dk-batt-low rect:last-of-type { fill: #ff3b30; }

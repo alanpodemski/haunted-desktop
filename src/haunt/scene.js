@@ -81,6 +81,15 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
       desk.scatter(innerWidth / 2, innerHeight * 0.45, 1.2);
     },
     onBlackout(on) { post.sensor.uniforms.uFade.value = on ? 1 : 0; },
+    // a file it carried off comes back to the desktop, renamed
+    onReturn(id) {
+      const icon = desk.getIcon(id);
+      if (!icon) return;
+      const m = icon.name.match(/^(.*?)(\.[^.]+)?$/);
+      const tag = /candy/i.test(icon.name) ? ' (eaten)' : ' (chewed)';
+      desk.returnIcon(id);
+      if (!icon.name.includes(tag)) desk.renameIcon(id, m[1] + tag + (m[2] || ''));
+    },
   });
   const photo = createPhoto({ renderer, scene, camera, post, creature, desk, sound });
 
@@ -162,7 +171,10 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
     }
     dust.update(dt, camera);
     if (sound) sound.setListener(camera);
+    batteryShown -= dt;
+    if (batteryShown <= 0) { batteryShown = 1; desk.setBattery(flashlight.battery.charge * 100); }
   }
+  let batteryShown = 0;
 
   return {
     renderer, scene, camera, flashlight, creature, room, post, leak, physics, boxes, photo,

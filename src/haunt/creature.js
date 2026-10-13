@@ -39,9 +39,11 @@ function gltfActor(gltf, meta) {
   const model = SkeletonUtils.clone(gltf.scene);
   root.add(model);
   const eyeMats = [];
-  let head = null;
+  let head = null, handR = null, handL = null;
   model.traverse((o) => {
     if (o.isBone && !head && /head/i.test(o.name)) head = o;
+    if (o.isBone && !handR && /righthand$/i.test(o.name)) handR = o;
+    if (o.isBone && !handL && /lefthand$/i.test(o.name)) handL = o;
     if (!o.isMesh) return;
     o.castShadow = true; o.receiveShadow = true;
     o.frustumCulled = false;
@@ -84,6 +86,14 @@ function gltfActor(gltf, meta) {
     setTimeScale(s) { if (current) current.timeScale = s; },
     setEyeGlow(v) { for (const m of eyeMats) m.emissiveIntensity = v; },
     headPos(out) { return head ? head.getWorldPosition(out) : out.set(root.position.x, 1.8, root.position.z); },
+    /** between its hands: where something carried in both arms sits */
+    carryPos(out) {
+      if (handR && handL) {
+        const a = handR.getWorldPosition(new THREE.Vector3()), b = handL.getWorldPosition(new THREE.Vector3());
+        return out.copy(a).add(b).multiplyScalar(0.5);
+      }
+      return out.set(root.position.x, 1.0, root.position.z);
+    },
     update(dt) { mixer.update(dt); },
   };
 }
@@ -110,6 +120,7 @@ function standInActor(meta) {
     setTimeScale(s) { ts = s; },
     setEyeGlow(v) { eyeMat.emissiveIntensity = v; },
     headPos(out) { return headM.getWorldPosition(out); },
+    carryPos(out) { return out.set(root.position.x, 1.0, root.position.z).addScaledVector(new THREE.Vector3(Math.sin(root.rotation.y), 0, Math.cos(root.rotation.y)), 0.35); },
     update(dt) {
       t += dt * ts;
       const w = name === 'run' ? Math.PI * 2 / meta.run.duration : name === 'crawl' ? Math.PI * 2 / meta.crawl.duration : 1.2;
@@ -145,7 +156,7 @@ const pick = (weights) => {
 };
 
 // ----------------------------------------------------------------------------------------- controller
-export async function createCreature(scene, loader, { flashlight, camera, sound, physics, boxes, onEvent, onJumpscare, onBlackout } = {}) {
+export async function createCreature(scene, loader, { flashlight, camera, sound, physics, boxes, onEvent, onJumpscare, onBlackout, onReturn } = {}) {
   const actor = await loadActor(loader);
   const { root, meta } = actor;
   root.visible = false;
@@ -166,6 +177,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     collider = world.createCollider(RAPIER.ColliderDesc.capsule(0.6, 0.24).setTranslation(0, 0.86, 0)
       .setMass(MASS).setFriction(0), body);
     collider.setEnabled(false);
+    physics.creatureBody = body;
   }
   function setDynamic(on) {
     if (!body) return;
@@ -181,6 +193,8 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   let nextAt = performance.now() / 1000 + rand(6, 9);
   let nextHuntAt = performance.now() / 1000 + rand(80, 110);
   let hunting = false, stunned = false, flashAt = -1e9;
+  let baitBox = null, baitSeen = new Map();   // box id -> when it was first seen lying in the corridor
+  const taken = [];                            // files it carried off, and when they come back
   let last = null, lastRoomRun = -1e9, count = 0;
   const tmp = v3(), head = v3(), chest = v3();
 
@@ -385,11 +399,12 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       hunting = true; stunned = false;
       sound && sound.drone(true);
       flashlight.stutter(0.9);
-      const x = DOOR.cx + rand(-0.1, 0.1), z = ROOM.z0 - 0.45;
-      place(x, z, faceAngle(camera.position.x - x, camera.position.z - z));
-      actor.play('idle', { fade: 0 });
+      // it comes down the corridor from one end (you hear it first), turns in at the doorway and comes for you;
+      // whatever you piled in the doorway is in its way
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const x = side < 0 ? CORRIDOR.x0 + 0.5 : CORRIDOR.x1 - 0.5;
+      place(x, CORRIDOR_LANE_Z, faceAngle(-side, 0));
       setDynamic(true);
-      yield* wait(1.2);
       let flicker = rand(4, 7), blocked = 0, clip = null;
       while (true) {
         const dt = yield;
@@ -403,13 +418,17 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
           drive.speed = 0; actor.setTimeScale(0); blocked = 0;
           continue;
         }
-        const dark = !flashlight.on || flashlight.spot.intensity < 12;
+        const dark = !flashlight.on || flashlight.output < 0.13;
         const want = dark ? 'run' : 'walk';
         if (clip !== want) { actor.play(want, { fade: 0.25 }); clip = want; }
         const speed = dark ? meta.run.speed : meta.walk.speed * 2.3;
-        // through the doorway first, then straight at you
-        const tx = root.position.z < ROOM.z0 + 0.4 ? DOOR.cx : camera.position.x;
-        const tz = root.position.z < ROOM.z0 + 0.4 ? ROOM.z0 + 0.7 : camera.position.z - 0.2;
+        // along the corridor to the doorway, through it, then straight at you
+        const inCorridor = root.position.z < ROOM.z0 - 0.15;
+        const lined = Math.abs(root.position.x - DOOR.cx) < 0.18;
+        let tx, tz;
+        if (inCorridor && !lined) { tx = DOOR.cx; tz = CORRIDOR_LANE_Z + 0.25; }
+        else if (root.position.z < ROOM.z0 + 0.4) { tx = DOOR.cx; tz = ROOM.z0 + 0.7; }
+        else { tx = camera.position.x; tz = camera.position.z - 0.2; }
         const dx = tx - root.position.x, dz = tz - root.position.z, d = Math.hypot(dx, dz) || 1;
         drive.x = dx / d; drive.z = dz / d; drive.speed = speed;
         let turn = faceAngle(drive.x, drive.z) - root.rotation.y; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
@@ -425,6 +444,53 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       sound && sound.drone(false);
       nextHuntAt = performance.now() / 1000 + rand(100, 160);
     },
+    /**
+     * Bait: a box left out in the corridor. It comes for it from the far end, bends to pick it up and carries it off
+     * into the dark. Caught in the beam on the way, it drops it and runs. A taken file comes back later, chewed.
+     */
+    *fetch() {
+      const b = baitBox; baitBox = null;
+      if (!b || !boxes.boxes.has(b.id)) return;
+      const bt = b.body.translation();
+      // it comes from the end the box is farther from, so it crosses the doorway on the way
+      const from = bt.x < DOOR.cx ? CORRIDOR.x1 - 0.5 : CORRIDOR.x0 + 0.5;
+      const leave = bt.x < DOOR.cx ? CORRIDOR.x0 + 0.4 : CORRIDOR.x1 - 0.4;
+      const z = CORRIDOR_LANE_Z;
+      const dir = Math.sign(bt.x - from);
+      const stopX = bt.x - dir * (0.45 + b.size.w / 2);
+      place(from, z, faceAngle(dir, 0));
+      const quick = meta.walk.speed * 2.6;
+      actor.play('walk', { fade: 0 });
+      yield* travelWatchful([[from, z], [stopX, z]], 'walk', quick, () => litness() > 0.2);
+      if (scared) { scared = false; yield* screamAtYou(); actor.play('run', { fade: 0.15 }); yield* travel([[root.position.x, z], [from, z]], 'run', { startSpeed: 1 }); return; }
+      // pick it up
+      const turnTo = faceAngle(bt.x - root.position.x, bt.z - root.position.z);
+      root.rotation.y = turnTo;
+      const dur = actor.play(actor.has('attack') ? 'attack' : 'idle', { loop: false, fade: 0.2 });
+      let t = 0, held = false;
+      const p = new THREE.Vector3(), q = new THREE.Quaternion();
+      while (t < Math.min(dur, 1.6)) {
+        const dt = yield; t += dt;
+        if (!held && t > 0.55) { held = true; boxes.carry(b); sound && sound.thud({ pos: root.position.clone(), strength: 0.5, size: b.size.t }); }
+        if (held) { actor.carryPos(p); q.setFromEuler(new THREE.Euler(0, root.rotation.y, 0)); boxes.holdAt(b, p, q); }
+      }
+      // off into the dark with it
+      actor.play('walk', { fade: 0.25 });
+      const ok = yield* travelWatchful([[root.position.x, root.position.z], [leave, z]], 'walk', quick, () => litness() > 0.2, () => {
+        actor.carryPos(p); q.setFromEuler(new THREE.Euler(0, root.rotation.y, 0)); boxes.holdAt(b, p, q);
+      });
+      if (!ok) {
+        boxes.letGo(b); scared = false;
+        yield* screamAtYou();
+        actor.play('run', { fade: 0.15 });
+        yield* travel([[root.position.x, z], [leave, z]], 'run', { startSpeed: 1 });
+        return;
+      }
+      boxes.consume(b);
+      taken.push({ id: b.id, at: performance.now() / 1000 + rand(25, 45) });
+      // while it is busy with that, it is not coming for you
+      nextHuntAt = Math.max(nextHuntAt, performance.now() / 1000 + 45);
+    },
     /** rare: comes through the doorway and runs past you, out of view to the left */
     *intrude() {
       const x0 = CORRIDOR.x0 + 0.6;
@@ -438,6 +504,22 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       sound && sound.sting(0.7);
     },
   };
+
+  /** travel, but give up (return false) the moment `spooked()` is true; `each` runs every frame */
+  let scared = false;
+  function* travelWatchful(points, clip, speed, spooked, each) {
+    const g = travel(points, clip, { speed, startSpeed: speed * 0.6, accel: 4 });
+    g.next();
+    let seen = 0;
+    while (true) {
+      const dt = yield;
+      seen = spooked() ? seen + dt : Math.max(0, seen - dt);
+      if (seen > 0.3) { scared = true; return false; }
+      const r = g.next(dt);
+      if (each) each();
+      if (r.done) return true;
+    }
+  }
 
   /** stuck behind boxes: it beats at them (two blows per attack clip) */
   function* bash() {
@@ -455,9 +537,9 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         h++;
         const fx = Math.sin(root.rotation.y), fz = Math.cos(root.rotation.y);
         const front = new THREE.Vector3(root.position.x + fx * 0.55, 0, root.position.z + fz * 0.55);
-        const hit = boxes ? boxes.near(front, 0.75) : [];
+        const hit = boxes ? boxes.near(front, 0.9) : [];
         for (const b of hit) {
-          b.body.applyImpulse({ x: fx * 95, y: 35, z: fz * 95 }, true);
+          b.body.applyImpulse({ x: fx * 150, y: 55, z: fz * 150 }, true);
           b.body.applyTorqueImpulse({ x: rand(-6, 6), y: rand(-6, 6), z: rand(-6, 6) }, true);
         }
         sound && sound.thud({ pos: front, strength: hit.length ? 1.4 : 0.4, size: 0.9 });
@@ -593,6 +675,22 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     update(dt) {
       actor.update(dt);
       const now = performance.now() / 1000;
+      // bait: a box lying in the corridor draws it (candy at once)
+      if (boxes) {
+        const lying = boxes.bait();
+        for (const id of [...baitSeen.keys()]) if (!lying.some((b) => b.id === id)) baitSeen.delete(id);
+        for (const b of lying) if (!baitSeen.has(b.id)) baitSeen.set(b.id, now + (/candy/i.test(b.icon.name) ? 1.5 : rand(4, 9)));
+        if (!job) {
+          const ready = lying.find((b) => baitSeen.get(b.id) <= now);
+          if (ready) { baitBox = ready; baitSeen.delete(ready.id); start('fetch'); }
+        }
+      }
+      // what it took comes back, chewed
+      for (let i = taken.length - 1; i >= 0; i--) {
+        if (taken[i].at > now) continue;
+        const { id } = taken.splice(i, 1)[0];
+        onReturn && onReturn(id);
+      }
       if (!job && now >= nextAt) schedule();
       if (job) {
         const r = job.next(dt);
