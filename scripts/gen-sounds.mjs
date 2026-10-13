@@ -49,9 +49,8 @@ export const SOUNDS = [
   ['step_walk_1', 0.6, 0.7, 'a single slow heavy bare footstep on an old creaky wooden floorboard, close, dry, no music'],
   ['step_walk_2', 0.6, 0.7, 'one dragging bare footstep on old wooden floor, scuff, close, no music'],
   ['step_walk_3', 0.6, 0.7, 'a single heavy barefoot step on a wooden floor with a small creak, no music'],
-  ['step_run_1', 0.5, 0.7, 'a single fast heavy barefoot running footstep slapping an old wooden floor, no music'],
-  ['step_run_2', 0.5, 0.7, 'one hard running bare footstep on wooden floorboards, thud, no music'],
-  ['step_run_3', 0.5, 0.7, 'a single sprinting barefoot footfall on a wooden hallway floor, no music'],
+  ['step_run_1', 0.8, 0.8, 'one loud heavy thud of a bare foot slamming onto an old wooden floor while running, single impact, close, no music'],
+  ['step_run_3', 0.8, 0.8, 'one loud barefoot slap on a wooden hallway floor, a heavy running step, close, no music'],
   ['crawl_1', 0.6, 0.7, 'hands and knees slapping a wooden floor once, something crawling fast, no music'],
   // your things
   ['box_tear', 1, 0.7, 'a cardboard box being torn apart violently, ripping and crushing, no music'],

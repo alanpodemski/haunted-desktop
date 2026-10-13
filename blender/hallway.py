@@ -5,6 +5,7 @@
     blender -b -P blender/hallway.py -- --no-preview    # skip the preview renders
     blender -b -P blender/hallway.py -- --quick         # no AO bake (white AO), fast look-dev
     blender -b -P blender/hallway.py -- --preview-only [hall door door2 fill moon]
+    blender -b -P blender/hallway.py -- --moon          # also bake the moonlight lightmap (bake_moon.py) at the end
 
 Authoring is in Blender space (Z up).  The glTF exporter maps Blender (x, y, z) -> glTF (x, z, -y), so the
 SPEC's hallway z in [-14, 0.8] is Blender y in [-0.8, 14] (the far end wall is at y = +14).
@@ -1812,6 +1813,10 @@ def main():
     bpy.ops.wm.save_as_mainfile(filepath=BLEND)
     if PREVIEW:
         previews()
+    if "--moon" in ARGS:
+        # the lightmap UVs were just regenerated, so the moon lightmap must be re-baked on them
+        import bake_moon
+        bake_moon.run()
 
 
 if __name__ == "__main__":

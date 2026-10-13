@@ -1,0 +1,118 @@
+[
+  {
+    "name": "breath_close_1",
+    "seconds": 4
+  },
+  {
+    "name": "breath_close_2",
+    "seconds": 4
+  },
+  {
+    "name": "breath_far",
+    "seconds": 5
+  },
+  {
+    "name": "growl_1",
+    "seconds": 2.5
+  },
+  {
+    "name": "growl_2",
+    "seconds": 2
+  },
+  {
+    "name": "moan_1",
+    "seconds": 4
+  },
+  {
+    "name": "moan_2",
+    "seconds": 3.5
+  },
+  {
+    "name": "shriek_1",
+    "seconds": 2
+  },
+  {
+    "name": "shriek_2",
+    "seconds": 1.6
+  },
+  {
+    "name": "scream_far",
+    "seconds": 3
+  },
+  {
+    "name": "laugh_child",
+    "seconds": 2.5
+  },
+  {
+    "name": "laugh_whisper",
+    "seconds": 2
+  },
+  {
+    "name": "whisper",
+    "seconds": 4
+  },
+  {
+    "name": "door_creak_1",
+    "seconds": 2.5
+  },
+  {
+    "name": "door_creak_2",
+    "seconds": 1.5
+  },
+  {
+    "name": "thunder_1",
+    "seconds": 7
+  },
+  {
+    "name": "thunder_2",
+    "seconds": 6
+  },
+  {
+    "name": "ambience",
+    "seconds": 22
+  },
+  {
+    "name": "step_walk_1",
+    "seconds": 0.6
+  },
+  {
+    "name": "step_walk_2",
+    "seconds": 0.6
+  },
+  {
+    "name": "step_walk_3",
+    "seconds": 0.6
+  },
+  {
+    "name": "step_run_1",
+    "seconds": 0.8
+  },
+  {
+    "name": "step_run_3",
+    "seconds": 0.8
+  },
+  {
+    "name": "crawl_1",
+    "seconds": 0.6
+  },
+  {
+    "name": "box_tear",
+    "seconds": 1
+  },
+  {
+    "name": "box_thud",
+    "seconds": 0.6
+  },
+  {
+    "name": "flare_ignite",
+    "seconds": 3
+  },
+  {
+    "name": "camera_flash",
+    "seconds": 1.5
+  },
+  {
+    "name": "music_box",
+    "seconds": 12
+  }
+]

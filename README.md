@@ -88,8 +88,11 @@ The camera has another use. Take a few photos of the empty room and look at them
   drags itself along the floor, stands in the doorway in the dark, or (rarely) comes into the room. If the beam lands
   on it, it turns to you, screams and runs. Its ground speed comes from each animation's own root motion, so its
   feet do not slide.
-- **Sound.** Synthesised with WebAudio, no samples: room tone, settling floorboards, creaking doors, thunder, a sting
-  when you catch it, and footsteps panned in 3D and muffled through walls. Each step sounds when one of its feet (or,
+- **Sound.** Recorded effects generated with the ElevenLabs Sound Effects API (`scripts/gen-sounds.mjs`, 29 sounds:
+  its breathing that comes closer during a hunt, growls, moans from behind walls, shrieks, a far-off child's giggle,
+  whispers when you sit in the dark, doors, thunder, the house's room tone, barefoot steps, tearing cardboard), each
+  loudness-matched and trimmed at load. Where a recording is missing, a synthesised WebAudio version plays instead.
+  Everything is panned in 3D and muffled through walls. Each step sounds when one of its feet (or,
   crawling, a hand) goes from swinging to planted on the floor, as loud as the body is moving, so the steps you hear
   always match the ones you see.
 - **Camera.** Grain, vignette and a little chromatic aberration at the edges.
@@ -121,7 +124,8 @@ Then open http://localhost:5175.
 
 Made by Alan Podemski, built with Claude Code. The creature is the Prisoner B Styperek character with zombie
 animations from [Mixamo](https://www.mixamo.com) (Adobe), used under the Mixamo terms. The character and
-animations are not covered by this repository's license.
+animations are not covered by this repository's license. The sound effects in `public/sfx` were generated with
+[ElevenLabs](https://elevenlabs.io).
 
 This is a fan project for fun. It is not affiliated with or endorsed by Apple or Adobe. macOS and Apple app icons
 are trademarks and property of Apple Inc.

@@ -32,12 +32,35 @@ export function createSound() {
 
   // ---- recorded effects
   const buffers = new Map();
+  const levels = new Map();      // name -> { gain, lead }: loudness matching and the silence to skip at the start
   let ambience = null;
+  /** measure a recording: RMS of its loud part, its peak, and where the sound actually starts */
+  function analyse(name, buf) {
+    const d = buf.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+    const step = /^(step|crawl|box_thud)/.test(name);
+    const th = peak * (step ? 0.12 : 0.04);
+    let start = 0; while (start < d.length && Math.abs(d[start]) < th) start++;
+    let sum = 0, n = 0;
+    for (let i = start; i < d.length; i++) { if (Math.abs(d[i]) > peak * 0.02) { sum += d[i] * d[i]; n++; } }
+    const rms = Math.sqrt(sum / Math.max(1, n));
+    // footsteps and knocks are matched by peak, everything else by loudness
+    const want = step ? 0.6 / Math.max(1e-4, peak) : (name === 'ambience' ? 0.05 : 0.11) / Math.max(1e-4, rms);
+    levels.set(name, { gain: Math.min(8, want), lead: Math.max(0, start / buf.sampleRate - 0.005), peak, rms });
+  }
   async function loadSamples() {
     let list = [];
-    try { list = await (await fetch('/sfx/index.json')).json(); } catch { return; }
+    try { list = await (await fetch('/sfx/index.json', { cache: 'no-cache' })).json(); } catch { return; }
     await Promise.all(list.map(async ({ name }) => {
-      try { buffers.set(name, await ctx.decodeAudioData(await (await fetch(`/sfx/${name}.mp3`)).arrayBuffer())); } catch { /* skip */ }
+      try {
+        const b = await ctx.decodeAudioData(await (await fetch(`/sfx/${name}.mp3`, { cache: 'no-cache' })).arrayBuffer());
+        analyse(name, b);
+        // a generation that came out (nearly) silent is left out rather than amplified into hiss
+        // (only impacts are expected to be loud; distant sounds are quiet on purpose and get matched up)
+        const pk = levels.get(name).peak;
+        if (pk >= (/^(step|crawl|box_thud)/.test(name) ? 0.08 : 0.005)) buffers.set(name, b);
+      } catch { /* skip */ }
     }));
     if (buffers.has('ambience') && !ambience) ambience = play('ambience', { loop: true, gain: 0.45, wet: false });
   }
@@ -49,7 +72,10 @@ export function createSound() {
     const vs = variants(prefix);
     if (!vs.length) return null;
     const src = ctx.createBufferSource();
-    src.buffer = buffers.get(vs[Math.floor(Math.random() * vs.length)]);
+    const pickName = vs[Math.floor(Math.random() * vs.length)];
+    src.buffer = buffers.get(pickName);
+    const lv = levels.get(pickName) || { gain: 1, lead: 0 };
+    gain *= lv.gain;
     src.loop = loop; src.playbackRate.value = rate;
     const g = ctx.createGain();
     const t = ctx.currentTime;
@@ -59,7 +85,7 @@ export function createSound() {
     let p = null;
     if (pos) { p = panner(pos); node = node.connect(p); }
     out(node, wet);
-    src.start(t);
+    src.start(t, loop ? 0 : lv.lead);
     return {
       stop(fade = 0.3) { const e = ctx.currentTime; g.gain.cancelScheduledValues(e); g.gain.setTargetAtTime(0, e, fade / 3); src.stop(e + fade + 0.1); },
       setPos(v) { if (p) { p.positionX.value = v.x; p.positionY.value = v.y; p.positionZ.value = v.z; } },
@@ -405,6 +431,8 @@ export function createSound() {
       return h ? { stop: () => h.stop(0.6), setPos: (v) => h.setPos(v) } : synth.musicBox();
     },
   });
+  // (a getter: Object.assign would have copied its value once)
+  Object.defineProperty(api, 'levels', { get: () => Object.fromEntries([...levels].map(([k, v]) => [k, { gain: +v.gain.toFixed(2), lead: +v.lead.toFixed(3), peak: +v.peak.toFixed(2), rms: +v.rms.toFixed(3) }])) });
   return api;
 
   function ready() { return !!ctx && ctx.state === 'running'; }
