@@ -68,25 +68,25 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   });
   nav.doors.sort((a, b) => b.door.z - a.door.z);
 
-  // Moonlight: a cold, weak spot outside every window, shining in through it. Each casts a shadow (rendered once,
-  // and again only while something moves), so the light falls out of the doorways in pale patches and nowhere else.
-  const moons = windows.map((w) => {
-    const end = w.id === 'Window_End';
-    // a low moon (~14° up), so its light crosses the side rooms and falls out of the doorways onto the hallway
-    const inward = w.out.clone().setY(0).normalize().negate();
-    inward.y = -0.25; inward.normalize();
-    const l = new THREE.SpotLight(0x9fb4e6, end ? 22 : 38, 0, end ? 0.5 : 0.36, 0.5, 2);
-    l.position.copy(w.pos).addScaledVector(inward, -3.2);
-    l.target.position.copy(w.pos).addScaledVector(inward, 3);
-    l.castShadow = true;
-    l.shadow.mapSize.set(512, 512);
-    l.shadow.bias = -0.0004; l.shadow.normalBias = 0.03;
-    l.shadow.camera.near = 0.5; l.shadow.camera.far = 16;
-    l.shadow.autoUpdate = false; l.shadow.needsUpdate = true;
-    l.userData.base = l.intensity;
-    scene.add(l, l.target);
-    return l;
-  });
+  // Moonlight is baked (blender/bake_moon.py): irradiance from a low moon behind every window, through the windows
+  // and out of the doorways, on the same UV1 atlas as the ambient occlusion. It costs nothing per frame; lightning
+  // just turns it up for an instant.
+  const MOON = 3.6;               // π × the bake's scale (see bake_moon.py)
+  const moonMats = [];
+  try {
+    const moonTex = await new THREE.TextureLoader().loadAsync('/models/hallway_moon.jpg');
+    moonTex.colorSpace = THREE.SRGBColorSpace; moonTex.flipY = false; moonTex.channel = 1;
+    moonTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    room.root.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!m.aoMap || moonMats.includes(m)) continue;
+        m.lightMap = moonTex; m.lightMapIntensity = MOON; m.needsUpdate = true;
+        moonMats.push(m);
+      }
+    });
+  } catch (err) { console.warn('[haunt] no baked moonlight:', err && err.message); }
+  const moons = [];
   let moonTurn = 0, frameNo = 0;
   const outside = [];
   room.root.traverse((o) => { if (o.isMesh && /outside/i.test(o.name + (o.material && o.material.name))) outside.push(o.material); });
@@ -108,7 +108,7 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
       for (const [t0, len, a] of strike.pulses) if (strike.t >= t0 && strike.t < t0 + len) k = Math.max(k, a);
       if (strike.t > 0.7) { if (strike.unstage) strike.unstage(); strike = null; }
     }
-    for (const l of moons) l.intensity = l.userData.base * (1 + 40 * k);
+    for (const m of moonMats) m.lightMapIntensity = MOON * (1 + 40 * k);
     for (const m of outside) m.emissiveIntensity = 1 + 8 * k;
   }
 
@@ -224,13 +224,6 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
       if (w > 0.35 && sound && (!d.lastCreak || time - d.lastCreak > 0.45)) { d.lastCreak = time; sound.doorCreak(pos, Math.min(1, w / 2)); }
     }
     items.update(dt, time);
-    // moon shadows: redraw one light's map per frame while something moves
-    if ((creature.busy || isMoving()) && (frameNo++ % 3 === 0)) {
-      // the moon whose light it (or a box) could be in: the nearest window to it
-      const p = creature.actor.root.position;
-      const l = creature.actor.root.visible ? moons.reduce((a, b) => (a.position.distanceToSquared(p) < b.position.distanceToSquared(p) ? a : b)) : moons[moonTurn++ % moons.length];
-      l.shadow.needsUpdate = true;
-    }
     lightning(dt);
     if (shake > 0) {
       shake = Math.max(0, shake - dt * 1.4);

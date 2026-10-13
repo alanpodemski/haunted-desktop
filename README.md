@@ -76,8 +76,9 @@ The camera has another use. Take a few photos of the empty room and look at them
 - **Air.** Dust motes only show where the beam crosses them, brightest when they are between you and the light.
   A ray-marched haze pass adds the faint visible cone, with the shadow map so furniture casts shadows into it.
 - **The house.** Doors hang on hinges (revolute joints with an old door's stiffness): whatever walks into one swings it,
-  and it creaks. Line of sight is a physics ray, so a barricade or a door leaf hides it from your light. The moon is a
-  low, cold spot behind every window, each with its own shadow map (redrawn only while something moves).
+  and it creaks. Line of sight is a physics ray, so a barricade or a door leaf hides it from your light. The moonlight
+  is baked (`blender/bake_moon.py`: a low, cold moon behind every window, Cycles, bounce light, on the AO atlas) into a
+  lightmap that costs nothing per frame; lightning turns it up for an instant.
 - **Physics.** Rapier 3D: the walls and big furniture are static colliders, the boxes dynamic bodies with
   cardboard-on-wood friction, and the creature a 75 kg capsule that is only ever moved by forces (2 kN on its way
   somewhere, 650 N when creeping up on you), so walls and furniture stop it and boxes are shoved, not passed through. Your hand is a spring
