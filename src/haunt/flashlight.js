@@ -102,6 +102,7 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
     setCaster(fn) { cast = fn; },
     /** cursor in normalised device coordinates */
     setPointer(x, y) {
+      if (!Number.isFinite(x + y)) return;
       const now = performance.now() / 1000;
       if (lastNdc) {
         const dtp = Math.max(0.004, now - lastNdcT);
@@ -139,8 +140,16 @@ export function createFlashlight(scene, camera, { candela = 90, angle = 0.62 } =
       return level * output * (0.06 + 0.94 * Math.exp(-Math.pow(r / 0.42, 3))) * Math.min(1, 9 / (d * d));
     },
     update(dt) {
+      if (!(dt > 0) || !Number.isFinite(dt)) return;
       t += dt;
       const want = desiredAngles();
+      if (!Number.isFinite(want.yaw + want.pitch)) { want.yaw = yaw; want.pitch = pitch; }
+      if (!Number.isFinite(yaw + pitch + vyaw + vpitch + t)) {
+        // never let one bad frame (a degenerate ray) leave the torch pointing nowhere for good
+        console.warn('[haunt] flashlight aim reset', { yaw, pitch, vyaw, vpitch, t, want, ndc: ndc.toArray() });
+        yaw = Number.isFinite(want.yaw) ? want.yaw : 0; pitch = Number.isFinite(want.pitch) ? want.pitch : 0;
+        vyaw = vpitch = 0; if (!Number.isFinite(t)) t = 0;
+      }
       if (!initialised) { yaw = want.yaw; pitch = want.pitch; initialised = true; }
       // damped spring (arm + torch ≈ 0.4 kg at ~0.5 m: settles in ~0.25 s, a hint of overshoot)
       const k = 120, c = 17;

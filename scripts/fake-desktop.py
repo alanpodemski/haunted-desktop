@@ -35,8 +35,7 @@ ITEMS = [
     ('candle.usdz',                           'usdz',        1_200_000, (1, 0)),
     ('candle 2.usdz',                         'usdz',        1_200_000, (1, 1)),
     ('road_flare.usdz',                       'usdz',        2_800_000, (1, 2)),
-    ('salt.usdz',                             'usdz',          900_000, (1, 3)),
-    ('batteries.usdz',                        'usdz',          640_000, (1, 4)),
+    ('batteries.usdz',                        'usdz',          640_000, (1, 3)),
     ('music_box.usdz',                        'usdz',        3_100_000, (2, 0)),
     # documents
     ('it_comes_at_3am.txt',                   'txt',             2_100, (2, 1)),

@@ -7,7 +7,7 @@ from one end, with doors on both sides into small dark rooms and a tall window a
 is a flashlight that points wherever your cursor is; the moon comes in through the side rooms' windows and falls out
 of the doorways in pale patches, and now and then lightning shows the whole hallway for an instant. Something moves
 from room to room across it. Sometimes it stands in a doorway, or at the far window, until you find it. And sometimes
-it comes down the hallway for you. It only moves while it is not in your light.
+it comes down the hallway for you, and your light does not stop it.
 
 **Play it: https://deskhaunt.vercel.app**
 
@@ -20,7 +20,7 @@ it comes down the hallway for you. It only moves while it is not in your light.
 | Mouse | Aim the flashlight |
 | Drag a folder onto the floor | It becomes a moving box in the room. Barricade the door. Drop onto a box to stack. |
 | Rubber band, Cmd-A, Shift-click | Select many files, as in Finder. Drop a selection into the room and it stacks itself into a wall. |
-| Drag a `.usdz` file into the room | Use it: candle, road flare, salt, fresh batteries, music box (see below) |
+| Drag a `.usdz` file into the room | Use it: candle, road flare, fresh batteries, music box (see below) |
 | Drag a box | Push or carry it (heavy ones only slide) |
 | Double-click a box | The file goes back to the desktop |
 | Space | Camera flash. The photo lands on your desktop; double-click it to look. |
@@ -31,30 +31,32 @@ it comes down the hallway for you. It only moves while it is not in your light.
 | R | Tidy the icons |
 | H | Make it come for you now |
 | L | Lightning |
+| ? | Show or hide the controls legend (top left) |
 | 1 to 7 | Make it happen now: cross, wander, dash, crawl, peek, at the far window, hunt (for recording) |
 
-URL options: `?nohud` hides the hint, `?hq` renders at full Retina resolution, `?low` renders below CSS resolution.
+URL options: `?nohud` hides the legend, `?hq` renders at full Retina resolution, `?low` renders below CSS resolution.
 
 ## How to survive
 
-Every couple of minutes it comes out of one of the far rooms and down the hallway for you. In the beam it freezes mid-step. While the beam is
-somewhere else it walks; in the dark, or while the old torch flickers, it runs. The catch: the flashlight follows your
-cursor, so every file you drag to build a barricade takes the light off it.
+Every couple of minutes it comes out of one of the far rooms and down the hallway for you. It walks; in the dark, or
+while the old torch flickers, it runs. Now and then the torch dies on its own, and when it comes back on, something is
+standing right in front of you. When it sprints across the hallway, lightning usually shows it.
 
 - **Time to build.** While you are dropping and moving boxes, and for 10 s after, it waits in its room (up to ~25 s per
   hunt), and nothing else comes past.
 - **Barricade.** Boxes are real rigid bodies. A file's size sets its box's size and mass, from a 1 kg box for a text
-  file to an 80 kg one for a disk. It pushes with a limited force, so a heavy pile stops it, and then it beats at it.
+  file to an 80 kg one for a disk. It is far stronger than any of them (~3 kN against ~350 N for the heaviest box
+  sliding), so a barricade only slows it; it shoves it apart.
 - **Flash.** A flash in its face drives it back out. The flash needs four seconds to recharge.
 - **Battery.** The menu bar battery is the torch's. Two old alkaline cells: they drain while it burns, sag with
   continuous use, creep back when it rests, and the bulb dims and yellows as they fail (light ∝ V^3.4). The switch has a
   loose contact; a hard shake of the mouse reseats it.
 - **Your things.** Folders are moving boxes (their icons are cardboard). The `.usdz` files are what you defend yourself
   with, shown with 3D thumbnails like Finder shows them:
-  - `candle`: a 1.5 cd flame. It will not move inside its small pool of light. Burns about two minutes; knock it
-    over and it goes out.
-  - `road_flare`: red magnesium light for 30 s, bright enough to cast shadows across the room. It freezes anywhere near.
-  - `salt`: poured as a line across its way. It will not step over it until it has scuffed it away (about 12 s).
+  - `candle`: a 1.5 cd flame. It hates the light and drags itself through its small pool slowly. Burns about two
+    minutes; knock it over and it goes out.
+  - `road_flare`: red magnesium light for 30 s, bright enough to cast shadows across the hallway. When its light
+    reaches it, it shrieks and backs off.
   - `batteries`: fresh cells for the torch.
   - `music_box`: it plays a waltz that runs down. It goes to listen, and then it breaks it.
 - **Bait.** A box left by a doorway or in a side room draws it: it comes out for it, carries it off into the dark, and
@@ -84,8 +86,10 @@ The camera has another use. Take a few photos of the empty room and look at them
   drags itself along the floor, stands in the doorway in the dark, or (rarely) comes into the room. If the beam lands
   on it, it turns to you, screams and runs. Its ground speed comes from each animation's own root motion, so its
   feet do not slide.
-- **Sound.** Synthesised with WebAudio, no samples: room tone, settling floorboards, footsteps panned in 3D and
-  muffled when they come through the wall, a sting when you catch it.
+- **Sound.** Synthesised with WebAudio, no samples: room tone, settling floorboards, creaking doors, thunder, a sting
+  when you catch it, and footsteps panned in 3D and muffled through walls. Each step sounds when one of its feet (or,
+  crawling, a hand) goes from swinging to planted on the floor, as loud as the body is moving, so the steps you hear
+  always match the ones you see.
 - **Camera.** Grain, vignette and a little chromatic aberration at the edges.
 - **Laptop friendly.** Renders at CSS-pixel resolution, 60 fps while something moves and 30 fps when it is quiet,
   and lowers its own render scale if the GPU takes longer than 7 ms a frame.

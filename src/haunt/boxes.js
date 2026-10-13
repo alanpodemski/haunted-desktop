@@ -250,7 +250,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
 
   window.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
-    if (e.target.closest && e.target.closest('.dk-icon, .dk-dock, .dk-menubar, .ql-window')) return;
+    if (e.target.closest && e.target.closest('.dk-icon, .dk-dock, .dk-menubar, .ql-window, #legend')) return;
     const p = pick(e.clientX, e.clientY);
     if (!p) return;
     e.stopPropagation(); e.preventDefault();
@@ -270,7 +270,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
 
   // double-click a box: the file goes back to the desktop
   window.addEventListener('dblclick', (e) => {
-    if (e.target.closest && e.target.closest('.dk-icon, .dk-dock, .dk-menubar, .ql-window')) return;
+    if (e.target.closest && e.target.closest('.dk-icon, .dk-dock, .dk-menubar, .ql-window, #legend')) return;
     const p = pick(e.clientX, e.clientY);
     if (!p) return;
     desk.returnIcon(p.b.id, e.clientX, e.clientY);

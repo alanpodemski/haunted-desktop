@@ -2,16 +2,16 @@
 // with its own physics and behaviour. Their desktop icons are 3D thumbnails of the same models (Finder shows .usdz
 // files that way), rendered here once at start.
 //
-//   candle      a 1.5 cd flame: a small pool of light it will not move in. Burns ~2 min, goes out if knocked over.
-//   road_flare  a red magnesium flare, ~25 cd for 30 s, with sparks: it freezes anywhere near it.
-//   salt        poured out as a line across its path; it will not step over it until it has worn it away.
+//   candle      a 1.5 cd flame: it hates the light, and slows to a crawl inside its small pool of it. Burns ~2 min,
+//               goes out if knocked over.
+//   road_flare  a red magnesium flare, ~25 cd for 30 s, with sparks: if its light reaches it, it screams and backs off.
 //   batteries   two fresh cells for the torch (the old ones drop on the floor).
 //   music_box   it plays; it goes to listen, and then it breaks it. Bait that buys time anywhere.
 
 import * as THREE from 'three';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-export const ITEM_TYPES = ['candle', 'road_flare', 'salt', 'batteries', 'music_box'];
+export const ITEM_TYPES = ['candle', 'road_flare', 'batteries', 'music_box'];
 export function itemType(name) {
   const n = (name || '').toLowerCase();
   if (!n.endsWith('.usdz')) return null;
@@ -35,7 +35,7 @@ function candleModel() {
     prof.push(new THREE.Vector2(0.024 + 0.002 * Math.sin(i * 2.1) + (i > 10 ? -(i - 10) * 0.004 : 0), y));
   }
   prof.unshift(new THREE.Vector2(0, 0)); prof.push(new THREE.Vector2(0.012, 0.142), new THREE.Vector2(0, 0.138));
-  const wax = new THREE.MeshPhysicalMaterial({ color: 0xece2cc, roughness: 0.55, transmission: 0.0, sheen: 0.3, sheenColor: 0xffe7c0 });
+  const wax = new THREE.MeshStandardMaterial({ color: 0xece2cc, roughness: 0.55 });
   const body = new THREE.Mesh(new THREE.LatheGeometry(prof, 24), wax);
   body.castShadow = body.receiveShadow = true; g.add(body);
   // drips
@@ -67,25 +67,6 @@ function flareModel() {
   cap.rotation.z = Math.PI / 2; cap.position.x = -0.12; g.add(cap);
   g.userData.flameX = 0.115;
   return { group: g, shape: { kind: 'cylX', r: 0.017, h: 0.25, mass: 0.2 } };
-}
-
-/** a round cardboard salt canister */
-function saltModel() {
-  const g = new THREE.Group();
-  const label = new THREE.MeshStandardMaterial({
-    map: canvasTex(512, 128, (c, w, h) => {
-      c.fillStyle = '#1f4fa8'; c.fillRect(0, 0, w, h);
-      c.fillStyle = '#f2f2f2'; c.font = '900 64px Georgia, serif'; c.fillText('SALT', 170, 84);
-      c.fillStyle = 'rgba(255,255,255,.7)'; c.font = '600 18px Helvetica'; c.fillText('IODIZED · 26 OZ', 190, 112);
-      for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; c.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
-    }), roughness: 0.75,
-  });
-  const top = new THREE.MeshStandardMaterial({ color: 0xd8d8d0, roughness: 0.6 });
-  const can = new THREE.Mesh(new THREE.CylinderGeometry(0.043, 0.043, 0.135, 28), [label, top, top]);
-  can.position.y = 0.0675; can.castShadow = can.receiveShadow = true; g.add(can);
-  const spout = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.003, 0.012), new THREE.MeshStandardMaterial({ color: 0xbfbfbf, metalness: 0.6, roughness: 0.4 }));
-  spout.position.set(0.02, 0.137, 0); g.add(spout);
-  return { group: g, shape: { kind: 'cyl', r: 0.043, h: 0.135, mass: 0.75 } };
 }
 
 /** two D cells */
@@ -132,7 +113,7 @@ function musicBoxModel() {
   return { group: g, shape: { kind: 'box', w: 0.12, h: 0.07, d: 0.085, mass: 0.45 } };
 }
 
-const MODELS = { candle: candleModel, road_flare: flareModel, salt: saltModel, batteries: batteriesModel, music_box: musicBoxModel };
+const MODELS = { candle: candleModel, road_flare: flareModel, batteries: batteriesModel, music_box: musicBoxModel };
 
 // ------------------------------------------------------------------------------------------------ icons
 /** Finder-style .usdz thumbnails: the object alone on transparent, three-quarter view, soft studio light */
@@ -167,7 +148,6 @@ export function renderItemIcons() {
 export function createItems({ scene, physics, boxes, flashlight, sound, desk }) {
   const { RAPIER, world } = physics;
   const live = [];             // { type, icon, group, body, collider, ... }
-  const saltLines = [];        // { a: Vector3, b: Vector3, strength 0..1, mesh }
   const tmp = new THREE.Vector3();
 
   function addBody(obj, shape, pos, yaw) {
@@ -211,6 +191,21 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
     return { pts, pos, vel, life, n };
   }
 
+  // Lights are made once, at start, and lent out: adding a light to a scene makes three.js recompile every material
+  // (the light count is baked into the shaders), which was the hitch when a flare was lit.
+  const flameLights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xffa24a, 0, 0, 2); scene.add(l); return l; });
+  const flareLight = new THREE.PointLight(0xff3a24, 0, 0, 2);
+  // a flare is the one light strong enough to throw hard shadows across the hallway
+  flareLight.castShadow = true; flareLight.shadow.mapSize.set(512, 512);
+  flareLight.shadow.bias = -0.002; flareLight.shadow.normalBias = 0.03; flareLight.shadow.camera.near = 0.05; flareLight.shadow.camera.far = 9;
+  flareLight.shadow.autoUpdate = false;
+  scene.add(flareLight);
+  const lend = (type) => {
+    if (type === 'road_flare') { if (flareLight.userData.busy) return null; flareLight.userData.busy = true; flareLight.shadow.autoUpdate = true; return flareLight; }
+    const l = flameLights.find((x) => !x.userData.busy); if (l) l.userData.busy = true; return l || null;
+  };
+  const giveBack = (l) => { if (!l) return; l.intensity = 0; l.userData.busy = false; if (l === flareLight) l.shadow.autoUpdate = false; };
+
   function make(type, icon, at, yaw) {
     const { group, shape } = MODELS[type]();
     scene.add(group);
@@ -219,16 +214,12 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
     addBody(it, shape, at, yaw);
     if (type === 'candle') {
       it.flame = flame(0.03, 0xff9a40); scene.add(it.flame);
-      it.light = new THREE.PointLight(0xffa24a, 0, 0, 2); scene.add(it.light);
-      it.lit = true; it.burn = 120; it.cd = 1.5;
+      it.light = lend('candle');
+      it.lit = !!it.light; it.burn = 120; it.cd = 1.5;
       sound && sound.match();
     } else if (type === 'road_flare') {
       it.flame = flame(0.07, 0xff3020); scene.add(it.flame);
-      it.light = new THREE.PointLight(0xff3a24, 0, 0, 2);
-      // a flare is the one light strong enough to throw hard shadows across the room
-      it.light.castShadow = true; it.light.shadow.mapSize.set(512, 512);
-      it.light.shadow.bias = -0.002; it.light.shadow.normalBias = 0.03; it.light.shadow.camera.near = 0.05; it.light.shadow.camera.far = 9;
-      scene.add(it.light);
+      it.light = lend('road_flare') || lend('candle');
       it.sp = sparks(); scene.add(it.sp.pts);
       it.lit = true; it.burn = 30; it.cd = 25;
       it.hiss = sound && sound.flareHiss();
@@ -240,32 +231,11 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
     return it;
   }
 
-  function pourSalt(at) {
-    // a line across the way it would come: perpendicular to the doorway → camera direction at this point
-    const dir = new THREE.Vector3(0.25 - at.x, 0, 0.35 - at.z).normalize();
-    const side = new THREE.Vector3(-dir.z, 0, dir.x);
-    const half = 0.6;
-    const a = at.clone().addScaledVector(side, -half), b = at.clone().addScaledVector(side, half);
-    a.y = b.y = 0.002;
-    // grains: a thin, uneven white strip
-    const n = 1400, geo = new THREE.BufferGeometry(), pos = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      const u = Math.random(), spread = (Math.random() + Math.random() - 1) * 0.035 * (1 + 0.5 * Math.sin(u * 17));
-      const p = a.clone().lerp(b, u).addScaledVector(dir, spread);
-      pos.set([p.x, 0.003 + Math.random() * 0.004, p.z], i * 3);
-    }
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const mesh = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xeeeae2, size: 0.007, sizeAttenuation: true }));
-    scene.add(mesh);
-    saltLines.push({ a, b, strength: 1, mesh });
-    sound && sound.pour();
-  }
-
   function remove(it) {
     it.done = true;
     scene.remove(it.group);
     if (it.flame) scene.remove(it.flame);
-    if (it.light) scene.remove(it.light);
+    if (it.light) giveBack(it.light);
     if (it.sp) scene.remove(it.sp.pts);
     if (it.hiss) it.hiss.stop();
     if (it.tune) it.tune.stop();
@@ -275,7 +245,7 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
 
   const up = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion();
   return {
-    live, saltLines,
+    live,
     /** a .usdz icon dropped at the cursor: true if it was used */
     drop(icon, clientX, clientY) {
       const type = itemType(icon.name);
@@ -290,13 +260,6 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
       }
       const t = boxes.dropTarget(clientX, clientY, 0);
       if (!t) return false;
-      if (type === 'salt') {
-        const floor = t.pos.clone(); floor.y = 0;
-        if (t.pos.y > 0.4) return false;          // salt goes on the floor
-        pourSalt(floor);
-        make('salt', icon, t.pos.clone().add(new THREE.Vector3(0.15, 0.02, 0.1)), 0.4);   // the empty canister
-        return true;
-      }
       make(type, icon, t.pos.clone(), t.yaw ?? Math.random() * 6);
       return true;
     },
@@ -326,26 +289,27 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
       m.body.applyTorqueImpulse({ x: 0.02, y: 0.03, z: -0.02 }, true);
       setTimeout(() => remove(m), 6000);
     },
-    /** would a step from a to b cross an intact salt line? returns the line, or null */
-    saltBetween(a, b) {
-      for (const s of saltLines) {
-        if (s.strength <= 0) continue;
-        // segment intersection in the floor plane, with a little reach for its feet
-        const d1x = b.x - a.x, d1z = b.z - a.z, d2x = s.b.x - s.a.x, d2z = s.b.z - s.a.z;
-        const den = d1x * d2z - d1z * d2x;
-        if (Math.abs(den) < 1e-6) continue;
-        const ex = s.a.x - a.x, ez = s.a.z - a.z;
-        const t = (ex * d2z - ez * d2x) / den, u = (ex * d1z - ez * d1x) / den;
-        if (t >= 0 && t <= 1 && u >= -0.15 && u <= 1.15) return s;
-      }
-      return null;
+    /** the flare's light on it (0..1+), for the creature to back off from */
+    flareAt(p) {
+      const f = live.find((it) => it.type === 'road_flare' && it.lit && it.light);
+      return f ? f.light.intensity / Math.max(0.3, f.light.position.distanceToSquared(p)) : 0;
     },
-    /** it scuffs at the line: it wears away over ~12 s of trying */
-    wearSalt(s, dt) {
-      s.strength = Math.max(0, s.strength - dt / 12);
-      s.mesh.material.opacity = 0.3 + 0.7 * s.strength;
-      s.mesh.material.transparent = true;
-      if (s.strength <= 0) { scene.remove(s.mesh); saltLines.splice(saltLines.indexOf(s), 1); }
+    /** let the GPU compile every shader the items will need, now rather than when the first one is dropped */
+    warm(renderer, camera) {
+      const g = new THREE.Group();
+      for (const t of ITEM_TYPES) g.add(MODELS[t]().group);
+      g.add(flame(0.03, 0xff9a40)); g.add(sparks().pts);
+      // and the moving boxes' material (a colour map with a bump map)
+      const t = canvasTex(4, 4, (c) => { c.fillStyle = '#888'; c.fillRect(0, 0, 4, 4); });
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshStandardMaterial({ map: t, bumpMap: t, bumpScale: 0.6, roughness: 0.9 })));
+      g.position.set(0, -50, 0);
+      scene.add(g);
+      renderer.compile(scene, camera);
+      // the flare's cube shadow has its own depth shaders: draw one frame with it on, so they compile now
+      flareLight.shadow.autoUpdate = true; flareLight.shadow.needsUpdate = true;
+      renderer.render(scene, camera);
+      flareLight.shadow.autoUpdate = false;
+      scene.remove(g);
     },
     update(dt, time) {
       for (const it of [...live]) {
@@ -361,18 +325,18 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
           tmp.applyQuaternion(it.group.quaternion).add(it.group.position);
           // a candle knocked over goes out; a flare burns on its side anyway
           up.set(0, 1, 0).applyQuaternion(it.group.quaternion);
-          if (it.type === 'candle' && it.lit && up.y < 0.5) { it.lit = false; sound && sound.puff(tmp); }
+          if (it.type === 'candle' && it.lit && up.y < 0.5) { it.lit = false; sound && sound.puff(tmp); giveBack(it.light); it.light = null; }
           if (it.lit) {
             it.burn -= dt;
-            if (it.burn <= 0) { it.lit = false; if (it.type === 'road_flare') it.hiss && it.hiss.stop(); }
+            if (it.burn <= 0) { it.lit = false; if (it.type === 'road_flare') it.hiss && it.hiss.stop(); giveBack(it.light); it.light = null; }
           }
           // flame physics, roughly: a candle flickers slowly with drafts, a flare sputters fast
           const n = it.type === 'candle'
             ? 0.85 + 0.1 * Math.sin(time * 7.3 + it.age) + 0.06 * Math.sin(time * 17.1) + (Math.random() < 0.01 ? -0.3 : 0)
             : 0.75 + 0.25 * Math.random();
           const on = it.lit ? 1 : 0;
-          it.light.intensity = it.cd * n * on * (it.type === 'road_flare' ? clamp(it.burn / 3, 0, 1) : clamp(it.burn / 8, 0.2, 1));
-          it.light.position.copy(tmp);
+          if (it.light) it.light.intensity = it.cd * n * on * (it.type === 'road_flare' ? clamp(it.burn / 3, 0, 1) : clamp(it.burn / 8, 0.2, 1));
+          if (it.light) it.light.position.copy(tmp);
           it.flame.position.copy(tmp);
           it.flame.visible = it.lit;
           it.flame.material.uniforms.uTime.value = time;
@@ -402,7 +366,7 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
           it.group.userData.dancer.rotation.y += dt * 2.4;
           if (it.tune) it.tune.setPos(it.group.position);
           if (it.age > 45) { it.playing = false; it.tune && it.tune.stop(); }   // wound down
-        } else if (it.type === 'batteries' || it.type === 'salt') {
+        } else if (it.type === 'batteries') {
           if (it.age > 60) { remove(it); continue; }        // spent things fade into the mess
         }
         void q;

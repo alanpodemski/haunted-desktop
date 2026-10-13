@@ -272,15 +272,6 @@ export function createSound() {
       n.connect(hp).connect(g); out(g); n.start(t);
       return { stop() { const e = ctx.currentTime; g.gain.cancelScheduledValues(e); g.gain.setTargetAtTime(0, e, 0.3); n.stop(e + 1.5); lfo.stop(e + 1.5); } };
     },
-    /** salt poured out of a canister: granular hiss */
-    pour() {
-      if (!ready() || muted) return;
-      const t = ctx.currentTime;
-      const g = ctx.createGain(); g.gain.value = 0;
-      for (let s2 = 0; s2 < 1.2; s2 += 0.004 + Math.random() * 0.006) g.gain.setValueAtTime(0.05 + Math.random() * 0.1, t + s2), g.gain.setValueAtTime(0, t + s2 + 0.002);
-      const n = noise(); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 5200; bp.Q.value = 0.7;
-      n.connect(bp).connect(g); out(g); n.start(t); n.stop(t + 1.3);
-    },
     /** a music box: a slow, minor waltz on a comb of tuned steel teeth (sines with a fast bell decay); returns { stop, setPos } */
     musicBox() {
       if (!ready()) return null;

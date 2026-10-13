@@ -177,22 +177,6 @@
       "icon": "/mac/icons/desk-road-flare-usdz.png"
     },
     {
-      "id": "salt-usdz",
-      "name": "salt.usdz",
-      "path": "/Users/demo/Desktop/salt.usdz",
-      "kind": "usdz",
-      "ext": "usdz",
-      "isFolder": false,
-      "bytes": 900000,
-      "icloud": false,
-      "finderKind": "usdz",
-      "pos": {
-        "x": 1616,
-        "y": 333
-      },
-      "icon": "/mac/icons/desk-salt-usdz.png"
-    },
-    {
       "id": "batteries-usdz",
       "name": "batteries.usdz",
       "path": "/Users/demo/Desktop/batteries.usdz",
@@ -204,7 +188,7 @@
       "finderKind": "usdz",
       "pos": {
         "x": 1616,
-        "y": 421
+        "y": 333
       },
       "icon": "/mac/icons/desk-batteries-usdz.png"
     },

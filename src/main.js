@@ -4,7 +4,8 @@
 // double-click one to put the file back. Select many (rubber band, Cmd-A, Shift-click) and drop them together.  Space: camera flash (a photo lands on the desktop).  F: flashlight.
 // N: sound.  P: pause.  R: tidy the icons.  L: lightning.  H: it comes for you now.  1–7: make it happen now (cross, wander, dash,
 // crawl, peek, endwatch, hunt), for recording.
-// URL: ?nohud hides the hint, ?hq renders at full Retina resolution, ?low below CSS resolution.
+// ?: show or hide the controls legend.
+// URL: ?nohud hides the legend, ?hq renders at full Retina resolution, ?low below CSS resolution.
 
 import { createDesktop } from './desktop/index.js';
 import { createHaunt } from './haunt/scene.js';
@@ -50,9 +51,16 @@ async function boot() {
   for (const ic of desk.getIcons()) { const t = itemType(ic.name); if (t) desk.renameIcon(ic.id, ic.name, thumbs[t]); }
 
   addEventListener('pointermove', (e) => haunt.setPointer(e.clientX, e.clientY), { passive: true });
-  const hint = document.getElementById('hint');
-  if (q.has('nohud')) hint.remove();
-  else setTimeout(() => hint.classList.add('gone'), 7000);
+  // the controls legend: stays until you hide it (? key or ✕); remembered per browser
+  const legend = document.getElementById('legend');
+  const store = { get() { try { return localStorage.getItem('legend'); } catch { return null; } }, set(v) { try { localStorage.setItem('legend', v); } catch { /* private mode */ } } };
+  const setLegend = (min) => { legend.classList.toggle('min', min); legend.querySelector('.x').textContent = min ? '?' : '✕'; store.set(min ? 'min' : 'open'); };
+  if (q.has('nohud')) legend.remove();
+  else {
+    setLegend(store.get() === 'min');
+    legend.querySelector('.x').addEventListener('click', () => setLegend(!legend.classList.contains('min')));
+    legend.addEventListener('pointerdown', (e) => e.stopPropagation());
+  }
 
   const unlock = () => { sound.unlock(); };
   addEventListener('pointerdown', unlock);
@@ -69,6 +77,7 @@ async function boot() {
     else if (k === 'h') haunt.creature.trigger('hunt');
     else if (k === 'r') desk.relayout();       // tidy the icons it scattered
     else if (k === 'l') haunt.strike();         // lightning
+    else if (k === '?' || k === '/') { if (legend.isConnected) setLegend(!legend.classList.contains('min')); }
     else if (/^[1-7]$/.test(k)) haunt.creature.trigger(EVENTS[Number(k) - 1]);
   });
 

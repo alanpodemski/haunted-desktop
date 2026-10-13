@@ -87,7 +87,7 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
     scene.add(l, l.target);
     return l;
   });
-  let moonTurn = 0;
+  let moonTurn = 0, frameNo = 0;
   const outside = [];
   room.root.traverse((o) => { if (o.isMesh && /outside/i.test(o.name + (o.material && o.material.name))) outside.push(o.material); });
 
@@ -134,6 +134,8 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
       desk.scatter(innerWidth / 2, innerHeight * 0.45, 1.2);
     },
     onBlackout(on) { post.sensor.uniforms.uFade.value = on ? 1 : 0; },
+    onScare() { shake = 0.7; },
+    onCross() { nextLightning = 0; },      // lightning as it runs across
     // a file it carried off comes back to the desktop, renamed
     onReturn(id) {
       const icon = desk.getIcon(id);
@@ -147,6 +149,7 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   const photo = createPhoto({ renderer, scene, camera, post, creature, desk, sound });
   const items = createItems({ scene, physics, boxes, flashlight, sound, desk });
   creature.setItems(items);
+  items.warm(renderer, camera);
 
   function resize() {
     renderer.setPixelRatio(dpr());
@@ -195,7 +198,8 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   function frame(now) {
     requestAnimationFrame(frame);
     const active = now - lastInput < 1500 || creature.busy || shake > 0 || isMoving();
-    if (now - last < (active ? 15 : 31)) return;
+    if (now - last < 15) return;      // a steady 60 fps (switching to 30 when idle read as stutter)
+    void active;
     let dt = (now - last) / 1000; last = now;
     if (!(dt > 0)) dt = 1 / 60;
     dt = Math.min(dt, 1 / 20);
@@ -221,7 +225,12 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
     }
     items.update(dt, time);
     // moon shadows: redraw one light's map per frame while something moves
-    if (creature.busy || isMoving()) { moons[moonTurn % moons.length].shadow.needsUpdate = true; moonTurn++; }
+    if ((creature.busy || isMoving()) && (frameNo++ % 3 === 0)) {
+      // the moon whose light it (or a box) could be in: the nearest window to it
+      const p = creature.actor.root.position;
+      const l = creature.actor.root.visible ? moons.reduce((a, b) => (a.position.distanceToSquared(p) < b.position.distanceToSquared(p) ? a : b)) : moons[moonTurn++ % moons.length];
+      l.shadow.needsUpdate = true;
+    }
     lightning(dt);
     if (shake > 0) {
       shake = Math.max(0, shake - dt * 1.4);

@@ -15,6 +15,18 @@
       padding: 8px 12px; border-radius: 999px; background: rgba(0,0,0,.35); backdrop-filter: blur(8px);
       transition: opacity 1.2s; }
     #hint.gone { opacity: 0; }
+    /* the controls legend: a small HUD panel under the menu bar, collapsible to a "?" */
+    #legend { position: fixed; left: 12px; top: calc(var(--mb, 37px) + 10px); z-index: 6; width: 236px;
+      font: 500 11px/1.45 -apple-system, system-ui, sans-serif; color: rgba(255,255,255,.82);
+      padding: 9px 11px 10px; border-radius: 12px; background: rgba(20,20,22,.55); backdrop-filter: blur(16px) saturate(1.3);
+      box-shadow: 0 0 0 .5px rgba(255,255,255,.14), 0 8px 24px rgba(0,0,0,.35); user-select: none; -webkit-user-select: none; }
+    #legend h3 { margin: 0 0 4px; font-size: 11px; font-weight: 650; color: #fff; display: flex; justify-content: space-between; }
+    #legend .x { cursor: default; opacity: .6; padding: 0 2px; }
+    #legend .row { display: flex; gap: 8px; }
+    #legend .k { flex: 0 0 74px; color: rgba(255,255,255,.55); }
+    #legend.min { width: auto; padding: 4px 9px; border-radius: 999px; }
+    #legend.min .body, #legend.min h3 .t { display: none; }
+    #legend.min h3 { margin: 0; }
     /* Quick Look style photo viewer */
     .ql-window { position: fixed; z-index: 20; left: 50%; top: 50%; translate: -50% -52%; width: min(78vw, 1000px);
       border-radius: 14px; overflow: hidden; background: rgba(30,30,32,.82); backdrop-filter: blur(30px) saturate(1.4);
@@ -28,7 +40,21 @@
 <body>
   <canvas id="scene"></canvas>
   <div id="desktop"></div>
-  <div id="hint">move the mouse to aim · drag folders into the hallway to barricade · .usdz files are your tools · space: flash · click for sound</div>
+  <div id="legend">
+    <h3><span class="t">Controls</span><span class="x" title="hide (?)">✕</span></h3>
+    <div class="body">
+      <div class="row"><span class="k">Mouse</span><span>aim the flashlight</span></div>
+      <div class="row"><span class="k">Drag folders</span><span>into the hallway: boxes to barricade</span></div>
+      <div class="row"><span class="k">Select many</span><span>drag a box on the desktop or ⌘A, then drop: a wall</span></div>
+      <div class="row"><span class="k">.usdz files</span><span>candle · flare · batteries · music box</span></div>
+      <div class="row"><span class="k">Space</span><span>camera flash (drives it back)</span></div>
+      <div class="row"><span class="k">F</span><span>flashlight on / off</span></div>
+      <div class="row"><span class="k">H · L</span><span>it comes for you · lightning</span></div>
+      <div class="row"><span class="k">1 – 7</span><span>make something happen</span></div>
+      <div class="row"><span class="k">R · N · P</span><span>tidy icons · sound · pause</span></div>
+      <div class="row"><span class="k">Click</span><span>turn the sound on</span></div>
+    </div>
+  </div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
