@@ -2,7 +2,8 @@
 // For each pixel the view ray is marched from the eye to the first surface (scene depth). At every step the
 // in-scattered light is: beam intensity × cookie × shadow-map visibility / distance² × Henyey–Greenstein phase
 // × the air's scattering coefficient. The march is jittered per pixel and per frame and the grain pass hides the
-// noise, so 12 steps are enough.
+// noise, so 12 steps are enough. The haze is soft, so it is marched at half resolution (a quarter of the pixels) and
+// added onto the full-resolution frame with bilinear filtering.
 
 import * as THREE from 'three';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
@@ -43,7 +44,6 @@ const VolumetricShader = {
       return (uCamWorld * v).xyz;
     }
     void main() {
-      vec4 base = texture2D(tDiffuse, vUv);
       float d = texture2D(tDepth, vUv).x;
       vec3 end = worldFromDepth(vUv, min(d, 0.99999));
       vec3 ro = uCamPos;
@@ -66,21 +66,33 @@ const VolumetricShader = {
         float hg = (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * g * cosT, 1.5));
         acc += cookie * occ * hg / max(dl * dl, 0.8);
       }
-      vec3 inscatter = acc * ds * uSigma * uIntensity;
-      gl_FragColor = vec4(base.rgb + inscatter, base.a);
+      gl_FragColor = vec4(acc * ds * uSigma * uIntensity, 1.0);   // the haze alone (added to the frame later)
     }`,
 };
 
+const CompositeShader = {
+  uniforms: { tDiffuse: { value: null }, tVol: { value: null } },
+  vertexShader: VolumetricShader.vertexShader,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse, tVol; varying vec2 vUv;
+    void main() { vec4 b = texture2D(tDiffuse, vUv); gl_FragColor = vec4(b.rgb + texture2D(tVol, vUv).rgb, b.a); }`,
+};
+
 export function createVolumetricPass(flashlight, camera) {
-  const pass = new ShaderPass(VolumetricShader);
-  const u = pass.uniforms;
+  const march = new ShaderPass(VolumetricShader);
+  const pass = new ShaderPass(CompositeShader);
+  const half = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, depthBuffer: false });
+  const u = march.uniforms;
   u.tCookie.value = flashlight.spot.map;
+  const marchRender = march.render.bind(march), compRender = pass.render.bind(pass);
   // the depth comes from whichever ping-pong target the RenderPass just drew into
-  const render = pass.render.bind(pass);
   pass.render = (renderer, writeBuffer, readBuffer, dt, mask) => {
     u.tDepth.value = readBuffer.depthTexture;
-    render(renderer, writeBuffer, readBuffer, dt, mask);
+    marchRender(renderer, half, readBuffer, dt, mask);
+    pass.uniforms.tVol.value = half.texture;
+    compRender(renderer, writeBuffer, readBuffer, dt, mask);
   };
+  pass.setSize = (w, h) => half.setSize(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2)));
   pass.sync = (time) => {
     const s = flashlight.spot;
     u.tShadow.value = s.shadow.map ? s.shadow.map.texture : null;

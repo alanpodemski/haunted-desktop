@@ -316,11 +316,26 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         actor.setTimeScale(Math.max(0.2, made / meta[clip].speed));
         footsteps();
         stuck = made < v * 0.25 ? stuck + dt : Math.max(0, stuck - dt);
+        if (stuck > 0.7 && boxesAhead()) {
+          // boxes in its way (wedged in a doorway, say): it tears through them
+          const keep = actor.clip;
+          drive.speed = 0;
+          yield* bash();
+          actor.play(keep, { fade: 0.2 });
+          stuck = 0;
+          continue;
+        }
         if (stuck > 2.5) { drive.speed = 0; return false; }
       }
     }
     drive.speed = 0;
     return true;
+  }
+
+  function boxesAhead() {
+    if (!boxes) return false;
+    const fx = Math.sin(root.rotation.y), fz = Math.cos(root.rotation.y);
+    return boxes.near(new THREE.Vector3(root.position.x + fx * 0.55, 0, root.position.z + fz * 0.55), 1.0).length > 0;
   }
 
   /** caught in the light: it turns to you and screams, then runs */
@@ -525,7 +540,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         actor.setTimeScale(Math.max(0.25, v / meta[want].speed));
         footsteps();
         blocked = v < speed * 0.2 ? blocked + dt : Math.max(0, blocked - dt);
-        if (blocked > 1.6) {
+        if (blocked > 0.7) {
           const fx = Math.sin(root.rotation.y), fz = Math.cos(root.rotation.y);
           const front = new THREE.Vector3(root.position.x + fx * 0.55, 0, root.position.z + fz * 0.55);
           if (boxes && boxes.near(front, 0.9).length && actor.has('attack')) { yield* bash(); clip = null; }
@@ -607,8 +622,9 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         h++;
         const fx = Math.sin(root.rotation.y), fz = Math.cos(root.rotation.y);
         const front = new THREE.Vector3(root.position.x + fx * 0.55, 0, root.position.z + fz * 0.55);
-        const hit = boxes ? boxes.near(front, 0.9) : [];
+        const hit = boxes ? boxes.near(front, 1.0) : [];
         for (const b of hit) {
+          if (boxes.damage(b, 1.5, { x: fx, z: fz })) continue;          // torn apart
           b.body.applyImpulse({ x: fx * 150, y: 55, z: fz * 150 }, true);
           b.body.applyTorqueImpulse({ x: rand(-6, 6), y: rand(-6, 6), z: rand(-6, 6) }, true);
         }

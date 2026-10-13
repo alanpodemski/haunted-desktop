@@ -46,7 +46,9 @@ standing right in front of you. When it sprints across the hallway, lightning us
   hunt), and nothing else comes past.
 - **Barricade.** Boxes are real rigid bodies. A file's size sets its box's size and mass, from a 1 kg box for a text
   file to an 80 kg one for a disk. It is far stronger than any of them (~3 kN against ~350 N for the heaviest box
-  sliding), so a barricade only slows it; it shoves it apart.
+  sliding), so a barricade only slows it; it shoves it apart, and boxes wedged where they cannot move (in a door
+  frame, say) it tears open: a few blows, depending on how heavy the box is, and it bursts into torn board. The file
+  comes back to the desktop, crushed.
 - **Flash.** A flash in its face drives it back out. The flash needs four seconds to recharge.
 - **Battery.** The menu bar battery is the torch's. Two old alkaline cells: they drain while it burns, sag with
   continuous use, creep back when it rests, and the bulb dims and yellows as they fail (light ∝ V^3.4). The switch has a
@@ -91,7 +93,7 @@ The camera has another use. Take a few photos of the empty room and look at them
   crawling, a hand) goes from swinging to planted on the floor, as loud as the body is moving, so the steps you hear
   always match the ones you see.
 - **Camera.** Grain, vignette and a little chromatic aberration at the edges.
-- **Laptop friendly.** Renders at CSS-pixel resolution, 60 fps while something moves and 30 fps when it is quiet,
+- **Laptop friendly.** The beam haze is marched at half resolution. Renders at CSS-pixel resolution, 60 fps while something moves and 30 fps when it is quiet,
   and lowers its own render scale if the GPU takes longer than 7 ms a frame.
 
 ## Run it locally

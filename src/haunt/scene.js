@@ -218,7 +218,7 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
     creature.update(dt);
     physics.step(dt, (h) => { boxes.beforeStep(h); creature.beforeStep(h); });
     creature.afterStep();
-    boxes.sync();
+    boxes.sync(dt);
     // doors that are pushed swing and creak (rusted hinges: stick-slip, louder the faster)
     for (const { d, w, pos } of physics.syncDoors()) {
       if (w > 0.35 && sound && (!d.lastCreak || time - d.lastCreak > 0.45)) { d.lastCreak = time; sound.doorCreak(pos, Math.min(1, w / 2)); }

@@ -126,7 +126,8 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
       .setMass(s.mass).setFriction(0.45).setRestitution(0.08)
       .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS)
       .setContactForceEventThreshold(25 * s.mass), body);
-    const b = { id: icon.id, icon, mesh, body, collider, mass: s.mass, size: s };
+    // how many blows it takes: an empty box tears at the first, an 80 kg one holds for three
+    const b = { id: icon.id, icon, mesh, body, collider, mass: s.mass, size: s, hp: 1 + s.mass / 30 };
     boxes.set(icon.id, b);
     byHandle.set(collider.handle, b);
     return b;
@@ -208,6 +209,36 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     ghost.position.copy(t.pos);
     ghost.rotation.set(0, t.yaw || 0, 0);
   }, true);
+
+  // ---- crushed boxes: a few torn flat pieces of board that fall where it was, then fade into the mess
+  const debris = [];
+  const pieceGeo = new THREE.BoxGeometry(1, 1, 1);
+  function burst(b, dir) {
+    const t = b.body.translation(), r = b.body.rotation();
+    const q0 = new THREE.Quaternion(r.x, r.y, r.z, r.w);
+    const mat = b.mesh.material[0];
+    for (let i = 0; i < 5; i++) {
+      const w = b.size.w * (0.4 + Math.random() * 0.35), d = b.size.d * (0.4 + Math.random() * 0.35);
+      const mesh = new THREE.Mesh(pieceGeo, mat);
+      mesh.scale.set(w, 0.006, d);
+      mesh.castShadow = mesh.receiveShadow = true;
+      scene.add(mesh);
+      const off = new THREE.Vector3((Math.random() - 0.5) * b.size.w, (Math.random() - 0.3) * b.size.h, (Math.random() - 0.5) * b.size.d).applyQuaternion(q0);
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 3, Math.random() * 3, Math.random() * 3));
+      const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(t.x + off.x, t.y + off.y, t.z + off.z).setRotation(q)
+        .setLinearDamping(0.6).setAngularDamping(0.8));
+      world.createCollider(RAPIER.ColliderDesc.cuboid(w / 2, 0.004, d / 2).setMass(0.15).setFriction(0.7), body);
+      body.applyImpulse({ x: dir.x * 0.4 + (Math.random() - 0.5) * 0.3, y: 0.25 + Math.random() * 0.3, z: dir.z * 0.4 + (Math.random() - 0.5) * 0.3 }, true);
+      debris.push({ mesh, body, age: 0 });
+    }
+    if (sound) { const p = new THREE.Vector3(t.x, t.y, t.z); sound.thud({ pos: p, strength: 1.5, size: 1 }); sound.tear(p); }
+    const name = b.icon.name;
+    remove(b);
+    // the file is back on the desktop, the worse for it
+    desk.returnIcon(b.id);
+    const m = name.match(/^(.*?)(\.[^.]+)?$/);
+    if (!name.includes('(crushed)')) desk.renameIcon(b.id, m[1] + ' (crushed)' + (m[2] || ''));
+  }
 
   // impacts: a box landing or being hit makes a hollow cardboard thump
   physics.onContactForce((e) => {
@@ -407,7 +438,21 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
       for (const b of boxes.values()) { const t = b.body.translation(); if (Math.hypot(t.x - p.x, t.z - p.z) < r) out.push(b); }
       return out;
     },
-    sync() {
+    /** a blow: it may tear the box apart (returns true if it did) */
+    damage(b, amount, dir) {
+      if (!boxes.has(b.id)) return false;
+      b.hp -= amount;
+      if (b.hp > 0) return false;
+      burst(b, dir);
+      return true;
+    },
+    sync(dt = 1 / 60) {
+      for (let i = debris.length - 1; i >= 0; i--) {
+        const p = debris[i]; p.age += dt;
+        const t = p.body.translation(), r = p.body.rotation();
+        p.mesh.position.set(t.x, t.y, t.z); p.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+        if (p.age > 25) { scene.remove(p.mesh); world.removeRigidBody(p.body); debris.splice(i, 1); }
+      }
       for (const b of boxes.values()) {
         const t = b.body.translation(), r = b.body.rotation();
         b.mesh.position.set(t.x, t.y, t.z);

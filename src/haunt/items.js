@@ -194,17 +194,14 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
   // Lights are made once, at start, and lent out: adding a light to a scene makes three.js recompile every material
   // (the light count is baked into the shaders), which was the hitch when a flare was lit.
   const flameLights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xffa24a, 0, 0, 2); scene.add(l); return l; });
+  // (no shadow for the flare: a point light's cube shadow is sampled by every pixel every frame, lit or not, ~2 ms)
   const flareLight = new THREE.PointLight(0xff3a24, 0, 0, 2);
-  // a flare is the one light strong enough to throw hard shadows across the hallway
-  flareLight.castShadow = true; flareLight.shadow.mapSize.set(512, 512);
-  flareLight.shadow.bias = -0.002; flareLight.shadow.normalBias = 0.03; flareLight.shadow.camera.near = 0.05; flareLight.shadow.camera.far = 9;
-  flareLight.shadow.autoUpdate = false;
   scene.add(flareLight);
   const lend = (type) => {
-    if (type === 'road_flare') { if (flareLight.userData.busy) return null; flareLight.userData.busy = true; flareLight.shadow.autoUpdate = true; return flareLight; }
+    if (type === 'road_flare') { if (flareLight.userData.busy) return null; flareLight.userData.busy = true; return flareLight; }
     const l = flameLights.find((x) => !x.userData.busy); if (l) l.userData.busy = true; return l || null;
   };
-  const giveBack = (l) => { if (!l) return; l.intensity = 0; l.userData.busy = false; if (l === flareLight) l.shadow.autoUpdate = false; };
+  const giveBack = (l) => { if (!l) return; l.intensity = 0; l.userData.busy = false; };
 
   function make(type, icon, at, yaw) {
     const { group, shape } = MODELS[type]();
@@ -305,10 +302,7 @@ export function createItems({ scene, physics, boxes, flashlight, sound, desk }) 
       g.position.set(0, -50, 0);
       scene.add(g);
       renderer.compile(scene, camera);
-      // the flare's cube shadow has its own depth shaders: draw one frame with it on, so they compile now
-      flareLight.shadow.autoUpdate = true; flareLight.shadow.needsUpdate = true;
       renderer.render(scene, camera);
-      flareLight.shadow.autoUpdate = false;
       scene.remove(g);
     },
     update(dt, time) {

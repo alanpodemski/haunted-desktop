@@ -214,6 +214,18 @@ export function createSound() {
       }
       out(g); n.start(t); n.stop(t + 1.7);
     },
+    /** cardboard tearing: a ripping burst of filtered noise */
+    tear(pos) {
+      if (!ready() || muted) return;
+      const t = ctx.currentTime;
+      const n = noise();
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.setValueAtTime(1800, t); bp.frequency.linearRampToValueAtTime(900, t + 0.35); bp.Q.value = 1.2;
+      const g = ctx.createGain(); g.gain.value = 0;
+      for (let s2 = 0; s2 < 0.35; s2 += 0.008 + Math.random() * 0.012) { g.gain.setValueAtTime(0.25 + Math.random() * 0.25, t + s2); g.gain.setValueAtTime(0.02, t + s2 + 0.004); }
+      g.gain.setValueAtTime(0, t + 0.4);
+      const p = panner(pos);
+      n.connect(bp).connect(g).connect(p); out(p); n.start(t, Math.random()); n.stop(t + 0.45);
+    },
     /** a door swinging on old hinges */
     doorCreak(pos, amount = 0.5) {
       if (!ready() || muted) return;
