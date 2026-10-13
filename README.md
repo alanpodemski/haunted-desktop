@@ -21,7 +21,7 @@ it comes down the hallway for you, and your light does not stop it.
 | Drag a folder onto the floor | It becomes a moving box in the room. Barricade the door. Drop onto a box to stack. |
 | Rubber band, Cmd-A, Shift-click | Select many files, as in Finder. Drop a selection into the room and it stacks itself into a wall. |
 | Drag a `.usdz` file into the room | Use it: candle, road flare, fresh batteries, music box (see below) |
-| Drag a box | Push or carry it (heavy ones only slide) |
+| Drag a box | Push or carry it (heavy ones only slide); let go over another box and it sets down square on top |
 | Double-click a box | The file goes back to the desktop |
 | Space | Camera flash. The photo lands on your desktop; double-click it to look. |
 | F | Flashlight on or off |
@@ -79,6 +79,8 @@ The camera has another use. Take a few photos of the empty room and look at them
   and it creaks. Line of sight is a physics ray, so a barricade or a door leaf hides it from your light. The moonlight
   is baked (`blender/bake_moon.py`: a low, cold moon behind every window, Cycles, bounce light, on the AO atlas) into a
   lightmap that costs nothing per frame; lightning turns it up for an instant.
+- **Walking.** It finds its way on a 0.15 m grid of the floor sampled against the walls and furniture (A*, pulled
+  taut), so it goes round beds, wardrobes and jambs instead of grinding into them.
 - **Physics.** Rapier 3D: the walls and big furniture are static colliders, the boxes dynamic bodies with
   cardboard-on-wood friction, and the creature a 75 kg capsule that is only ever moved by forces (2 kN on its way
   somewhere, 650 N when creeping up on you), so walls and furniture stop it and boxes are shoved, not passed through. Your hand is a spring

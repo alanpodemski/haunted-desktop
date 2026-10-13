@@ -116,8 +116,8 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     img.onload = () => { for (const i of [4, 5]) { mats[i].map.dispose(); mats[i].map = faceTexture(icon.name, img, { label: true }); mats[i].needsUpdate = true; } };
 
     // stacked boxes start square to the one below (a hand lines them up), others land at a random angle
-    const yaw = yawAt !== null ? yawAt + (Math.random() - 0.5) * 0.12 : (Math.random() - 0.5) * 0.8;
-    const tilt = yawAt !== null ? 0.02 : 0.15;
+    const yaw = yawAt !== null ? yawAt : (Math.random() - 0.5) * 0.8;
+    const tilt = yawAt !== null ? 0 : 0.15;
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler((Math.random() - 0.5) * tilt, yaw, (Math.random() - 0.5) * tilt));
     const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(at.x, at.y, at.z).setRotation(q)
@@ -167,8 +167,8 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     if (under) {
       const t = under.body.translation();
       tmpBox.setFromObject(under.mesh);
-      // centred over the box below, nudged towards where you aimed
-      pos = new THREE.Vector3(t.x + (p.x - t.x) * 0.3, tmpBox.max.y + s.h / 2 + 0.02, t.z + (p.z - t.z) * 0.3);
+      // exactly on top: centred, square to it, set down (not dropped), so the stack stands
+      pos = new THREE.Vector3(t.x, tmpBox.max.y + s.h / 2 + 0.004, t.z);
       const r = under.body.rotation();
       yaw = new THREE.Euler().setFromQuaternion(new THREE.Quaternion(r.x, r.y, r.z, r.w), 'YXZ').y;
     } else if (n.y > 0.7) {
@@ -188,27 +188,68 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
       if (!overlap) break;
       pos.y += 0.04;
     }
-    return { pos, yaw, size: s };
+    return { pos, yaw, size: s, onBox: under || null };
   }
 
   // ghost of the box while a file is being dragged over the room
-  const ghost = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
-    new THREE.LineBasicMaterial({ color: 0xfff3dc, transparent: true, opacity: 0.55, depthTest: false }));
-  ghost.renderOrder = 10;
+  // the box you are about to drop: a pale see-through box that glides after the cursor; the box it will sit on
+  // lights up green
+  const ghost = new THREE.Group();
+  const ghostFill = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xfff3dc, transparent: true, opacity: 0.13, depthWrite: false }));
+  const ghostEdge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0xfff3dc, transparent: true, opacity: 0.7, depthTest: false }));
+  ghost.add(ghostFill, ghostEdge);
+  ghost.renderOrder = 10; ghostEdge.renderOrder = 11;
   ghost.visible = false;
-  scene.add(ghost);
+  const seat = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0x7dff9a, transparent: true, opacity: 0.85, depthTest: false }));
+  seat.renderOrder = 11; seat.visible = false;
+  scene.add(ghost, seat);
+  const ghostWant = { pos: new THREE.Vector3(), yaw: 0, size: null, onBox: null, fresh: true };
   let dragIcon = null;
-  desk.onIconDragStart((id) => { dragIcon = desk.getIcon(id); });
-  desk.onIconDragEnd(() => { dragIcon = null; ghost.visible = false; });
+  desk.onIconDragStart((id) => { dragIcon = desk.getIcon(id); ghostWant.fresh = true; });
+  desk.onIconDragEnd(() => { dragIcon = null; ghost.visible = false; seat.visible = false; });
   window.addEventListener('pointermove', (e) => {
     if (!dragIcon) return;
     const t = dropTarget(e.clientX, e.clientY, dragIcon.bytes);
     ghost.visible = !!t;
-    if (!t) return;
-    ghost.scale.set(t.size.w, t.size.h, t.size.d);
-    ghost.position.copy(t.pos);
-    ghost.rotation.set(0, t.yaw || 0, 0);
+    if (!t) { seat.visible = false; return; }
+    ghostWant.pos.copy(t.pos); ghostWant.yaw = t.yaw || 0; ghostWant.size = t.size; ghostWant.onBox = t.onBox;
   }, true);
+  function updateGhost(dt) {
+    if (!ghost.visible || !ghostWant.size) return;
+    const k = ghostWant.fresh ? 1 : 1 - Math.exp(-dt * 18);       // glide, ~55 ms to catch up
+    ghostWant.fresh = false;
+    ghost.position.lerp(ghostWant.pos, k);
+    ghost.rotation.y += (ghostWant.yaw - ghost.rotation.y) * k;
+    ghost.scale.set(ghostWant.size.w, ghostWant.size.h, ghostWant.size.d);
+    ghostFill.material.color.set(ghostWant.onBox ? 0xb8ffc8 : 0xfff3dc);
+    seat.visible = !!ghostWant.onBox;
+    if (ghostWant.onBox) {
+      const b = ghostWant.onBox;
+      seat.position.copy(b.mesh.position); seat.quaternion.copy(b.mesh.quaternion);
+      seat.scale.set(b.size.w + 0.01, b.size.h + 0.01, b.size.d + 0.01);
+    }
+  }
+
+  /** a box let go of above another settles square onto it, the way you would set it down */
+  function settleOnto(b) {
+    const t = b.body.translation();
+    let best = null;
+    for (const o of boxes.values()) {
+      if (o === b) continue;
+      const ot = o.body.translation();
+      tmpBox.setFromObject(o.mesh);
+      const top = tmpBox.max.y;
+      const bottom = t.y - b.size.h / 2;
+      if (bottom < top - 0.08 || bottom > top + 0.6) continue;
+      if (Math.hypot(t.x - ot.x, t.z - ot.z) > Math.max(o.size.w, o.size.d) * 0.6) continue;
+      if (!best || top > best.top) best = { o, top, ot };
+    }
+    if (!best) return;
+    const r = best.o.body.rotation();
+    b.body.setTranslation({ x: best.ot.x, y: best.top + b.size.h / 2 + 0.004, z: best.ot.z }, true);
+    b.body.setRotation(r, true);
+    b.body.setLinvel({ x: 0, y: 0, z: 0 }, true); b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  }
 
   // ---- crushed boxes: a few torn flat pieces of board that fall where it was, then fade into the mess
   const debris = [];
@@ -276,6 +317,14 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     const p = o.clone().addScaledVector(d, Math.min(t, 9));
     p.x = clamp(p.x, ROOM.x0 + 0.2, ROOM.x1 - 0.2);
     p.z = clamp(p.z, ROOM.z0 + 0.3, ROOM.z1 - 0.3);
+    // carried over another box: lift it clear of that box's top, so letting go sets it down on it
+    for (const o of boxes.values()) {
+      if (o === hand.b) continue;
+      const ot = o.body.translation();
+      if (Math.hypot(p.x - ot.x, p.z - ot.z) > Math.max(o.size.w, o.size.d) * 0.6) continue;
+      tmpBox.setFromObject(o.mesh);
+      p.y = Math.max(p.y, tmpBox.max.y + hand.b.size.h * 0.9 + 0.05);
+    }
     return p;
   }
 
@@ -294,7 +343,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     if (!hand || e.pointerId !== hand.pid) return;
     hand.target = handTarget(e.clientX, e.clientY);
   }, true);
-  const release = (e) => { if (hand && (!e || e.pointerId === hand.pid)) { hand = null; sound && sound.scrape(false); } };
+  const release = (e) => { if (hand && (!e || e.pointerId === hand.pid)) { settleOnto(hand.b); hand = null; sound && sound.scrape(false); } };
   window.addEventListener('pointerup', release, true);
   window.addEventListener('pointercancel', release, true);
   window.addEventListener('blur', () => release());
@@ -313,7 +362,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     boxes,
     /** a desktop icon dropped at (clientX, clientY): true if it became a box */
     drop(icon, clientX, clientY) {
-      ghost.visible = false;
+      ghost.visible = false; seat.visible = false;
       const t = dropTarget(clientX, clientY, icon.bytes);
       if (!t) return false;
       make(icon, t.pos, t.yaw);
@@ -447,6 +496,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
       return true;
     },
     sync(dt = 1 / 60) {
+      updateGhost(dt);
       for (let i = debris.length - 1; i >= 0; i--) {
         const p = debris[i]; p.age += dt;
         const t = p.body.translation(), r = p.body.rotation();

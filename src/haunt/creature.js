@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { HALL } from './layout.js';
+import { createNav } from './nav.js';
 
 const DEFAULT_META = {
   run: { speed: 5.6, duration: 0.62 },
@@ -184,6 +185,8 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     collider.setEnabled(false);
     physics.creatureBody = body;
   }
+  // where it can walk: a grid of the floor sampled against the walls and furniture (see nav.js)
+  const navGrid = physics ? createNav(physics) : null;
   function setDynamic(on) {
     if (!body) return;
     const { RAPIER } = physics;
@@ -228,6 +231,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   const inSideRoom = (p) => p.x < HALL.x0 - 0.05 || p.x > HALL.x1 + 0.05;
   if (boxes) boxes.setBaitTest((p) => inSideRoom(p) || doors.some((d) => Math.hypot(d.door.x - p.x, d.door.z - p.z) < 1.2));
   const place = (x, z, yaw) => {
+    if (navGrid && !navGrid.walkable(x, z)) [x, z] = navGrid.snap(x, z);
     root.position.set(x, 0, z); root.rotation.set(0, yaw, 0); root.visible = true;
     contacts.clear();
     setDynamic(true); drive.force = WALK_FORCE;
@@ -300,6 +304,16 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   function* travel(points, clip, { speed = meta[clip].speed, accel = 14, startSpeed = speed, turnRate = 9, force = drive.force } = {}) {
     let v = startSpeed, stuck = 0;
     drive.force = force;
+    // each leg goes round walls and furniture (an A* route over the walkable floor), not straight through them
+    if (navGrid) {
+      const full = [points[0]];
+      let [px, pz] = [root.position.x, root.position.z];
+      for (let i = 1; i < points.length; i++) {
+        for (const w of navGrid.route(px, pz, points[i][0], points[i][1])) full.push(w);
+        [px, pz] = points[i];
+      }
+      points = full;
+    }
     for (let i = 1; i < points.length; i++) {
       const [bx, bz] = points[i];
       const last = i === points.length - 1;
@@ -325,7 +339,13 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
           stuck = 0;
           continue;
         }
-        if (stuck > 2.5) { drive.speed = 0; return false; }
+        if (stuck > 1.2 && !inView() && body) {
+          // stuck somewhere you cannot see: it gets past (nobody saw how)
+          body.setTranslation({ x: bx, y: 0, z: bz }, true); root.position.x = bx; root.position.z = bz;
+          stuck = 0;
+          continue;
+        }
+        if (stuck > 4) { drive.speed = 0; return false; }
       }
     }
     drive.speed = 0;
@@ -430,9 +450,13 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     *peek() {
       const d = pickDoor((x) => x.door.z < -3);
       const [px, pz] = out(d, -0.3);
-      place(px, pz, faceAngle(camera.position.x - px, camera.position.z - pz));
+      // it comes out of the dark of its room to the threshold (it does not just appear there)
+      place(d.inside.x, d.inside.z, faceAngle(d.into.x, d.into.z));
+      actor.play('walk', { fade: 0 });
+      yield* travel([[d.inside.x, d.inside.z], [px, pz]], 'walk', { speed: meta.walk.speed * 1.6 });
+      root.rotation.y = faceAngle(camera.position.x - px, camera.position.z - pz);
       setDynamic(false);                 // it stands still against the jamb
-      actor.play('idle', { fade: 0 });
+      actor.play('idle', { fade: 0.4 });
       let seen = 0, t = 0;
       const patience = rand(8, 14);
       while (t < patience) {
@@ -447,10 +471,15 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     },
     /** a figure at the far end, against the window; when it is found it walks into the last room */
     *endwatch() {
-      const x = rand(-0.35, 0.35), z = nav.end.z + 0.6;
-      place(x, z, faceAngle(camera.position.x - x, camera.position.z - z));
+      const x = rand(-0.35, 0.35), z = nav.end.z + 0.7;
+      // out of one of the last rooms, to the far window, and it turns round
+      const from = nearestDoor({ x, z });
+      place(from.inside.x, from.inside.z, faceAngle(from.into.x, from.into.z));
+      actor.play('walk', { fade: 0 });
+      yield* travel([[from.inside.x, from.inside.z], out(from, 0.7), [x, z]], 'walk', { speed: meta.walk.speed * 1.8 });
+      root.rotation.y = faceAngle(camera.position.x - x, camera.position.z - z);
       setDynamic(false);
-      actor.play('idle', { fade: 0 });
+      actor.play('idle', { fade: 0.5 });
       let seen = 0, t = 0;
       const patience = rand(10, 18);
       while (t < patience) {
@@ -475,7 +504,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       const leave = exitPath(from).slice(1);         // waypoints out of its room
       let grace = 0;
       let flicker = rand(4, 7), blocked = 0, clip = null, detour = 0, detourSide = 1;
-      let huntTime = 0, best = Infinity, sinceBest = 0;
+      let huntTime = 0, best = Infinity, sinceBest = 0, route = [], routeIn = 0;
       // you hear it before you see it: wet, ragged breathing that comes with it
       const breath = sound && sound.voice && sound.voice('breath_close', { pos: root.position.clone().setY(1.6), loop: true, gain: 1.1, fadeIn: 1.5 });
       let growlIn = rand(4, 9);
@@ -522,6 +551,13 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
           if (ld && !meIn && Math.hypot(...out(ld, 0.5).map((v, i) => v - (i ? root.position.z : root.position.x))) > 0.4) [tx, tz] = out(ld, 0.5);
           else { tx = lure.pos.x; tz = lure.pos.z; }
         } else { tx = camera.position.x; tz = camera.position.z - 0.2; }
+        // steer along a route to the goal (round furniture and jambs), refreshed a few times a second
+        if (navGrid) {
+          routeIn -= dt;
+          if (routeIn <= 0 || !route.length) { route = navGrid.route(root.position.x, root.position.z, tx, tz); routeIn = 0.4; }
+          while (route.length > 1 && Math.hypot(route[0][0] - root.position.x, route[0][1] - root.position.z) < 0.35) route.shift();
+          if (route.length) [tx, tz] = route[0];
+        }
         if (detour > 0) {
           // walking round something solid: aim off to the side for a moment
           detour -= dt;
