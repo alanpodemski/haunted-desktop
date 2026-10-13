@@ -708,11 +708,11 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
 
   function schedule() {
     const now = performance.now() / 1000;
-    // fast runs across are the hook: lots of them, more in the first minute
-    const early = now - bornAt < 75;
-    const w = early ? { dash: 55, crawl: 15, cross: 15, peek: 10, endwatch: 5 } : { dash: 34, cross: 20, wander: 12, crawl: 12, peek: 14, endwatch: 8 };
+    // fast runs across are the hook: it opens with three sprints, and after that ~70% of what it does is running or
+    // crawling (dash, crawl), the rest the slow, standing kinds (wander, peek, the far window, a walk across)
+    const w = { dash: 45, crawl: 25, cross: 9, wander: 8, peek: 8, endwatch: 5 };
     if (!actor.has('peek')) delete w.peek;
-    if (count < 1) { start('dash'); return; }
+    if (count < 3) { start('dash'); return; }
     if (now >= nextHuntAt) { start('hunt'); return; }
     if (last && w[last] && last !== 'dash') w[last] *= 0.3;
     if (now - lastScare > 70 && now - bornAt > 40 && Math.random() < 0.3) { lastScare = now; start('scare'); return; }
