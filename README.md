@@ -17,6 +17,7 @@ And sometimes it comes in. It only moves while it is not in your light.
 |---|---|
 | Mouse | Aim the flashlight |
 | Drag a folder onto the floor | It becomes a moving box in the room. Barricade the door. Drop onto a box to stack. |
+| Rubber band, Cmd-A, Shift-click | Select many files, as in Finder. Drop a selection into the room and it stacks itself into a wall. |
 | Drag a `.usdz` file into the room | Use it: candle, road flare, salt, fresh batteries, music box (see below) |
 | Drag a box | Push or carry it (heavy ones only slide) |
 | Double-click a box | The file goes back to the desktop |
@@ -37,6 +38,8 @@ Every couple of minutes it comes through the doorway for you. In the beam it fre
 somewhere else it walks; in the dark, or while the old torch flickers, it runs. The catch: the flashlight follows your
 cursor, so every file you drag to build a barricade takes the light off it.
 
+- **Time to build.** While you are dropping and moving boxes, and for 10 s after, it waits in the corridor beside the
+  doorway (up to ~25 s per hunt), and nothing else comes past.
 - **Barricade.** Boxes are real rigid bodies. A file's size sets its box's size and mass, from a 1 kg box for a text
   file to an 80 kg one for a disk. It pushes with a limited force, so a heavy pile stops it, and then it beats at it.
 - **Flash.** A flash in its face drives it back out. The flash needs four seconds to recharge.
@@ -66,7 +69,8 @@ The camera has another use. Take a few photos of the empty room and look at them
 - **Air.** Dust motes only show where the beam crosses them, brightest when they are between you and the light.
   A ray-marched haze pass adds the faint visible cone, with the shadow map so furniture casts shadows into it.
 - **Physics.** Rapier 3D: the room's walls and big furniture are static colliders, the boxes dynamic bodies with
-  cardboard-on-wood friction, and the creature a 75 kg capsule that walks with a capped force. Your hand is a spring
+  cardboard-on-wood friction, and the creature a 75 kg capsule that is only ever moved by forces (2 kN on its way
+  somewhere, 650 N when creeping up on you), so walls and furniture stop it and boxes are shoved, not passed through. Your hand is a spring
   with a 380 N limit. Impacts make a thump scaled by the contact force.
 - **Photos.** The flash is a short, bright light at the lens. The frame is saved as a JPEG with a date stamp and shown
   in a Quick Look style viewer. What it sometimes shows is posed for that one render only, never the live view.

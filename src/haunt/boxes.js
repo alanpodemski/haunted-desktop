@@ -223,6 +223,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
 
   // ---- hand: grab a box with the mouse
   let hand = null;
+  let lastBuild = -1e9;          // when you last dropped or moved a box (it gives you time to build)
   function pick(clientX, clientY) {
     ndc.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
     ray.setFromCamera(ndc, camera);
@@ -284,12 +285,67 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
       const t = dropTarget(clientX, clientY, icon.bytes);
       if (!t) return false;
       make(icon, t.pos, t.yaw);
+      lastBuild = performance.now() / 1000;
       return true;
+    },
+    get lastBuild() { return lastBuild; },
+    markBuild() { lastBuild = performance.now() / 1000; },
+    /**
+     * A whole selection dropped at once: it is stacked into a wall where you dropped it, the way you would pile
+     * moving boxes into a doorway: the biggest at the bottom, rows ~1 m wide, each row on top of the one below,
+     * square to your line of sight. Returns the ids that went in.
+     */
+    dropMany(icons, clientX, clientY) {
+      ghost.visible = false;
+      if (!icons.length) return [];
+      const biggest = icons.reduce((a, b) => (b.bytes > a.bytes ? b : a));
+      const t = dropTarget(clientX, clientY, biggest.bytes);
+      if (!t) return [];
+      const base = t.pos.clone(); base.y -= t.size.h / 2;          // the surface it lands on
+      const toCam = new THREE.Vector3(camera.position.x - base.x, 0, camera.position.z - base.z).normalize();
+      const side = new THREE.Vector3(toCam.z, 0, -toCam.x);
+      const yaw = Math.atan2(toCam.x, toCam.z);
+      const order = [...icons].sort((a, b) => b.bytes - a.bytes);
+      // rows up to 1.2 m wide, a layer up to the height of the door head; then the next layer goes in front of it
+      const ROW = 1.2, TOP = 1.95;
+      const out = [];
+      let layer = 0, y = base.y, rowW = 0, row = [], depth = 0;
+      const place = () => {
+        if (!row.length) return;
+        const total = row.reduce((a, e) => a + e.sz.w + 0.02, -0.02);
+        let x = -total / 2, tallest = 0;
+        for (const { ic, sz } of row) {
+          const p = base.clone().addScaledVector(side, x + sz.w / 2).addScaledVector(toCam, layer + sz.d / 2 - t.size.d / 2);
+          p.y = y + sz.h / 2 + 0.015;
+          p.x = clamp(p.x, ROOM.x0 + sz.w / 2, ROOM.x1 - sz.w / 2);
+          // never inside a wall, a jamb or the head of the doorway: step it back into the room until it is clear
+          const shape = new RAPIER.Cuboid(sz.w / 2 - 0.01, sz.h / 2 - 0.01, sz.d / 2 - 0.01);
+          const rot = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
+          for (let k = 0; k < 30 && world.intersectionWithShape(p, rot, shape, RAPIER.QueryFilterFlags.EXCLUDE_DYNAMIC | RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC); k++) {
+            p.addScaledVector(toCam, 0.04);
+          }
+          make(ic, p, yaw);
+          out.push(ic.id);
+          x += sz.w + 0.02; tallest = Math.max(tallest, sz.h); depth = Math.max(depth, sz.d);
+        }
+        y += tallest + 0.01;
+        row = []; rowW = 0;
+      };
+      for (const ic of order) {
+        const sz = sizeOf(ic.bytes);
+        if (row.length && rowW + sz.w > ROW) place();
+        if (y + sz.h > base.y + TOP) { place(); layer += depth + 0.03; depth = 0; y = base.y; }
+        row.push({ ic, sz }); rowW += sz.w + 0.02;
+      }
+      place();
+      lastBuild = performance.now() / 1000;
+      return out;
     },
     dropTarget,
     /** called before every physics step: the hand's force on the grabbed box */
     beforeStep(dt) {
       if (!hand) return;
+      lastBuild = performance.now() / 1000;
       const { body } = hand.b;
       const t = body.translation(), r = body.rotation();
       q.set(r.x, r.y, r.z, r.w);
@@ -328,6 +384,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
       b.carried = true;
       if (hand && hand.b === b) hand = null;
       b.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+      b.collider.setSensor(true);          // held against its chest: it must not shove the one carrying it
     },
     holdAt(b, pos, quat) {
       b.body.setNextKinematicTranslation(pos);
@@ -336,6 +393,7 @@ export function createBoxes({ scene, physics, camera, desk, sound }) {
     /** dropped (it was startled): falls from where it is */
     letGo(b) {
       b.carried = false;
+      b.collider.setSensor(false);
       b.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
       b.body.wakeUp();
     },

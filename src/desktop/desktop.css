@@ -331,3 +331,7 @@
 /* live battery glyph: macOS fills it red at 10 % and below */
 .dk-batt-svg { display: block; color: #fff; }
 .dk-batt-svg.dk-batt-low rect:last-of-type { fill: #ff3b30; }
+
+/* Finder's rubber-band selection (dark appearance) */
+.dk-marquee { position: absolute; z-index: 6; pointer-events: none; border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.12); border-radius: 1px; }

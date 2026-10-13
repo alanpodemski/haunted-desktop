@@ -1,7 +1,7 @@
 // main.js: the fake macOS desktop (DOM) over a live three.js wallpaper (the haunted room).
 //
 // Mouse: aims the flashlight. Drag a file onto the floor: it becomes a box (barricade the door). Drag boxes around,
-// double-click one to put the file back.  Space: camera flash (a photo lands on the desktop).  F: flashlight.
+// double-click one to put the file back. Select many (rubber band, Cmd-A, Shift-click) and drop them together.  Space: camera flash (a photo lands on the desktop).  F: flashlight.
 // N: sound.  P: pause.  R: tidy the icons.  H: it comes for you now.  1–7: make it happen now (dash, crawl, walk, drag, watch, intrude,
 // peek), for recording.
 // URL: ?nohud hides the hint, ?hq renders at full Retina resolution, ?low below CSS resolution.
@@ -20,10 +20,31 @@ async function boot() {
     liveWallpaper: true,
     // a file dropped onto the floor of the room becomes a box there
     onDrop: (icon, x, y) => (dropHandler ? dropHandler(icon, x, y) : false),
+    // a whole selection dropped into the room: folders and documents stack into a wall, tools get used
+    onDropMany: (icons, x, y) => (dropManyHandler ? dropManyHandler(icons, x, y) : []),
   });
+  let dropManyHandler = null;
   const haunt = await createHaunt(document.getElementById('scene'), { sound, desk, quality: q.has('hq') ? 2 : q.has('low') ? 0.5 : 1 });
   // folders and documents become boxes; .usdz files are the things you defend yourself with
-  dropHandler = (icon, x, y) => (itemType(icon.name) ? haunt.items.drop(icon, x, y) : haunt.boxes.drop(icon, x, y));
+  dropHandler = (icon, x, y) => {
+    if (!itemType(icon.name)) return haunt.boxes.drop(icon, x, y);
+    const ok = haunt.items.drop(icon, x, y);
+    if (ok) haunt.boxes.markBuild();
+    return ok;
+  };
+  dropManyHandler = (icons, x, y) => {
+    // a selection builds a wall from its folders and documents; tools are used one at a time, so they stay
+    // behind (unless the selection is only tools)
+    const tools = icons.filter((i) => itemType(i.name)), stuff = icons.filter((i) => !itemType(i.name));
+    if (stuff.length) return haunt.boxes.dropMany(stuff, x, y);
+    const taken = [];
+    tools.forEach((ic, i) => {
+      const a = i * 2.4, r = 18 + 10 * i;      // spread a little so candles do not land inside each other
+      if (haunt.items.drop(ic, x + Math.cos(a) * r, y + Math.sin(a) * r * 0.5)) taken.push(ic.id);
+    });
+    haunt.boxes.markBuild();
+    return taken;
+  };
   // their icons: 3D thumbnails of the same models, as Finder shows .usdz files
   const thumbs = renderItemIcons();
   for (const ic of desk.getIcons()) { const t = itemType(ic.name); if (t) desk.renameIcon(ic.id, ic.name, thumbs[t]); }

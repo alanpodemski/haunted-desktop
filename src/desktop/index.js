@@ -492,15 +492,55 @@ export async function createDesktop(root, opts = {}) {
 
   // ------------------------------------------------------------ selection + drag
   const cbs = { dragStart: [], drag: [], dragEnd: [], resize: [], open: [] };
-  let selected = null;
-  const select = (rec) => {
-    if (selected && selected !== rec) selected.node.classList.remove('dk-selected');
-    selected = rec;
-    if (rec) rec.node.classList.add('dk-selected');
+  // Selection, as in Finder: click selects one, Shift/Cmd-click toggles, a rubber band on the wallpaper selects
+  // everything it touches, Cmd-A selects all. Dragging any selected icon drags the whole selection.
+  const selection = new Set();
+  const select = (rec, { toggle = false, add = false } = {}) => {
+    if (!toggle && !add) { for (const r of selection) r.node.classList.remove('dk-selected'); selection.clear(); }
+    if (!rec) return;
+    if (toggle && selection.has(rec)) { selection.delete(rec); rec.node.classList.remove('dk-selected'); return; }
+    selection.add(rec); rec.node.classList.add('dk-selected');
   };
+  const isUi = (t) => t.closest && t.closest('.dk-icon, .dk-dock, .dk-menubar, .ql-window');
   root.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.dk-icon')) return;
-    select(null);
+    if (e.button !== 0 || isUi(e.target)) return;
+    if (!e.shiftKey && !e.metaKey) select(null);
+    // rubber band
+    const x0 = e.clientX, y0 = e.clientY, pid = e.pointerId;
+    const before = new Set(selection);
+    let band = null;
+    const move = (ev) => {
+      if (ev.pointerId !== pid) return;
+      if (!band) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+        band = el('div', 'dk-marquee', root);
+      }
+      const l = Math.min(x0, ev.clientX), t = Math.min(y0, ev.clientY), r = Math.max(x0, ev.clientX), b = Math.max(y0, ev.clientY);
+      Object.assign(band.style, { left: `${l}px`, top: `${t}px`, width: `${r - l}px`, height: `${b - t}px` });
+      for (const rec of icons.values()) {
+        if (rec.hidden) continue;
+        const hit = rec.x + rec.w / 2 > l && rec.x - rec.w / 2 < r && rec.y + rec.h / 2 + 20 > t && rec.y - rec.h / 2 < b;
+        const want = hit || before.has(rec);
+        if (want !== selection.has(rec)) { if (want) selection.add(rec); else selection.delete(rec); rec.node.classList.toggle('dk-selected', want); }
+      }
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== pid) return;
+      if (band) band.remove();
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', up, true);
+    };
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+  });
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      select(null);
+      for (const rec of icons.values()) if (!rec.hidden) select(rec, { add: true });
+    }
   });
   // Finder's "snap to grid" on drop (arrangeBy = grid): the nearest *free* cell, so a drop never
   // hides another icon (a hidden icon cannot be grabbed).
@@ -519,6 +559,9 @@ export async function createDesktop(root, opts = {}) {
     let dragging = false;
     let grabDX = 0, grabDY = 0;
     let lastX = startX, lastY = startY;
+    // everything selected moves together, keeping its arrangement
+    const group = selection.has(rec) ? [...selection].filter((r) => !r.hidden) : [rec];
+    const offsets = new Map(group.map((r) => [r, { dx: r.x - rec.x, dy: r.y - rec.y, x0: r.x, y0: r.y }]));
     // Capture keeps events coming even when the pointer outruns the icon or crosses the robot's
     // canvas. The node must not be moved in the DOM while it holds capture: re-inserting it
     // (appendChild to raise it) silently releases capture — that was why drags died after one move.
@@ -531,14 +574,16 @@ export async function createDesktop(root, opts = {}) {
         dragging = true;
         // grab offset relative to where the icon is *now* (the robot may have shoved it meanwhile)
         grabDX = rec.x - startX; grabDY = rec.y - startY;
-        node.classList.add('dk-dragging');
-        node.style.zIndex = String(1000 + ++zTop); // raise without touching the DOM order
-        for (const cb of cbs.dragStart) cb(rec.id);
+        for (const r of group) { r.node.classList.add('dk-dragging'); r.node.style.zIndex = String(1000 + ++zTop); }
+        for (const cb of cbs.dragStart) cb(rec.id, group.map((r) => r.id));
       }
       lastX = ev.clientX; lastY = ev.clientY;
-      rec.x = clamp(ev.clientX + grabDX, 0, W);
-      rec.y = clamp(ev.clientY + grabDY, menubarH, H);
-      applyTransform(rec);
+      for (const r of group) {
+        const o = offsets.get(r);
+        r.x = clamp(ev.clientX + grabDX + o.dx, 0, W);
+        r.y = clamp(ev.clientY + grabDY + o.dy, menubarH, H);
+        applyTransform(r);
+      }
       for (const cb of cbs.drag) cb(rec.id, rec.x, rec.y);
     };
     const up = (ev) => { if (ev.pointerId === pid) finish(); };
@@ -553,20 +598,18 @@ export async function createDesktop(root, opts = {}) {
       window.removeEventListener('blur', finish);
       try { if (node.hasPointerCapture(pid)) node.releasePointerCapture(pid); } catch { /* ignore */ }
       if (!dragging) return;
-      node.classList.remove('dk-dragging');
-      node.style.zIndex = String(++zTop); // the icon you moved last stays on top, as in Finder
-      // a live wallpaper may take the file (dropped into the scene); the icon then leaves the desktop
-      if (opts.onDrop && opts.onDrop(publicIcon(rec), lastX, lastY)) {
-        setHidden(rec, true);
-        for (const cb of cbs.dragEnd) cb(rec.id);
-        return;
+      for (const r of group) { r.node.classList.remove('dk-dragging'); r.node.style.zIndex = String(++zTop); }
+      // a live wallpaper may take the files (dropped into the scene); those icons then leave the desktop
+      let taken = [];
+      if (group.length > 1 && opts.onDropMany) taken = opts.onDropMany(group.map(publicIcon), lastX, lastY) || [];
+      else if (opts.onDrop && opts.onDrop(publicIcon(rec), lastX, lastY)) taken = [rec.id];
+      for (const r of group) {
+        if (taken.includes(r.id)) { setHidden(r, true); continue; }
+        // the room took part of the selection: the rest flies back to where it was, as a refused drop does in Finder
+        if (taken.length) { const o = offsets.get(r); r.x = o.x0; r.y = o.y0; r.node.classList.add('dk-thrown'); applyTransform(r); setTimeout(() => r.node.classList.remove('dk-thrown'), 500); continue; }
+        if ((view.arrangeBy || 'grid') === 'grid') { const s = snap(r); r.x = s.x; r.y = s.y; applyTransform(r); }
       }
-      if ((view.arrangeBy || 'grid') === 'grid') {
-        const s = snap(rec);
-        rec.x = s.x; rec.y = s.y;
-        applyTransform(rec);
-        for (const cb of cbs.drag) cb(rec.id, rec.x, rec.y);
-      }
+      if (taken.length) select(null);
       for (const cb of cbs.dragEnd) cb(rec.id);
     }
     // Window-level capture-phase listeners: they work with or without pointer capture and are not
@@ -587,7 +630,8 @@ export async function createDesktop(root, opts = {}) {
     const rec = icons.get(node.dataset.id);
     if (!rec) return;
     e.preventDefault();
-    select(rec);
+    if (e.shiftKey || e.metaKey) { select(rec, { toggle: true }); if (!selection.has(rec)) return; }
+    else if (!selection.has(rec)) select(rec);
     startPress(rec, e);
   });
 
@@ -598,7 +642,7 @@ export async function createDesktop(root, opts = {}) {
   function setHidden(rec, hidden) {
     rec.hidden = hidden;
     rec.node.style.display = hidden ? 'none' : '';
-    if (hidden && selected === rec) select(null);
+    if (hidden && selection.has(rec)) { selection.delete(rec); rec.node.classList.remove('dk-selected'); }
   }
   /** put an icon back on the desktop at the free grid cell nearest to (x, y) */
   function returnIcon(rec, x = W - GRID.rightInset, y = GRID.firstRowY) {

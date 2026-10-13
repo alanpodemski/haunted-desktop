@@ -165,12 +165,13 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   ghost.root.visible = false;
   scene.add(ghost.root);
 
-  // ---- its body in the physics world: a 75 kg capsule. Kinematic (it goes where the event puts it and shoves
-  // boxes aside) except while hunting, when it is dynamic and walks with a limited force, so a heavy barricade
-  // slows it down or stops it until it breaks through.
-  const MASS = 75, DRIVE_FORCE = 650;
+  // ---- its body in the physics world: a 75 kg capsule, always moved by forces, never teleported through things.
+  // Walls and furniture stop it; boxes it shoves with a limited force (2 kN on its way somewhere, 650 N when it is
+  // creeping up on you, so a heavy barricade holds it until it beats it apart). Only the jumpscare and hiding
+  // switch it to kinematic.
+  const MASS = 75, HUNT_FORCE = 650, WALK_FORCE = 2000;
   let body = null, collider = null, dynamic = false;
-  const drive = { x: 0, z: 0, speed: 0 };
+  const drive = { x: 0, z: 0, speed: 0, force: WALK_FORCE };
   if (physics) {
     const { RAPIER, world } = physics;
     body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -10, 0).lockRotations());
@@ -200,7 +201,13 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   const tmp = v3(), head = v3(), chest = v3();
 
   const faceAngle = (dx, dz) => Math.atan2(dx, dz);   // model faces +Z
-  const place = (x, z, yaw) => { root.position.set(x, 0, z); root.rotation.set(0, yaw, 0); root.visible = true; };
+  const place = (x, z, yaw) => {
+    root.position.set(x, 0, z); root.rotation.set(0, yaw, 0); root.visible = true;
+    setDynamic(true); drive.force = WALK_FORCE;
+  };
+  const now = () => performance.now() / 1000;
+  /** you are building: something was dropped or dragged in the last 10 s */
+  const building = () => boxes && now() - boxes.lastBuild < 10;
 
   /** how strongly the beam is on the creature right now (0..1), counting only what the camera can see */
   function litness() {
@@ -248,27 +255,35 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   // ---- coroutine helpers
   function* wait(sec) { let t = 0; while (t < sec) t += yield; }
 
-  /** run along a polyline at the clip's matching speed, turning to face where it goes */
-  function* travel(points, clip, { speed = meta[clip].speed, accel = 14, startSpeed = speed, turnRate = 9 } = {}) {
-    let v = startSpeed;
+  /**
+   * Walk a polyline under its own power: the drive pushes the body towards each waypoint, the gait follows the speed
+   * it actually makes (so feet do not skate, and it strains against what is in the way). Returns false if it got
+   * stuck for 2.5 s (a wall, or a barricade too heavy for its walking force).
+   */
+  function* travel(points, clip, { speed = meta[clip].speed, accel = 14, startSpeed = speed, turnRate = 9, force = drive.force } = {}) {
+    let v = startSpeed, stuck = 0;
+    drive.force = force;
     for (let i = 1; i < points.length; i++) {
-      const a = points[i - 1], b = points[i];
-      const dx = b[0] - a[0], dz = b[1] - a[1];
-      const len = Math.hypot(dx, dz);
-      let s = 0;
-      const want = faceAngle(dx, dz);
-      while (s < len) {
+      const [bx, bz] = points[i];
+      const last = i === points.length - 1;
+      while (true) {
+        const dx = bx - root.position.x, dz = bz - root.position.z, d = Math.hypot(dx, dz);
+        if (d < (last ? 0.2 : 0.45)) break;
         const dt = yield;
         v = Math.min(speed, v + accel * dt);
-        s = Math.min(len, s + v * dt);
-        root.position.x = a[0] + dx * s / len;
-        root.position.z = a[1] + dz * s / len;
-        let d = want - root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d));
-        root.rotation.y += d * Math.min(1, turnRate * dt);
-        actor.setTimeScale(v / meta[clip].speed);      // the gait follows the ground speed, so feet do not skate
-        footsteps(v / meta[clip].speed);
+        drive.x = dx / d; drive.z = dz / d; drive.speed = v;
+        if (!body) { root.position.x += drive.x * v * dt; root.position.z += drive.z * v * dt; }
+        let t = faceAngle(dx, dz) - root.rotation.y; t = Math.atan2(Math.sin(t), Math.cos(t));
+        root.rotation.y += t * Math.min(1, turnRate * dt);
+        const made = body ? Math.hypot(body.linvel().x, body.linvel().z) : v;
+        actor.setTimeScale(Math.max(0.2, made / meta[clip].speed));
+        footsteps(made / meta[clip].speed);
+        stuck = made < v * 0.25 ? stuck + dt : Math.max(0, stuck - dt);
+        if (stuck > 2.5) { drive.speed = 0; return false; }
       }
     }
+    drive.speed = 0;
+    return true;
   }
 
   /** caught in the light: it turns to you and screams, then runs */
@@ -297,10 +312,11 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     actor.play(clip, { fade: 0 });
     const v = meta[clip].speed;
     let seen = 0;
-    while (dir > 0 ? root.position.x < x1 : root.position.x > x1) {
+    const g = travel([[x0, z], [x1, z]], clip, { speed: v, startSpeed: v });
+    g.next();
+    while (true) {
       const dt = yield;
-      root.position.x += dir * v * dt;
-      footsteps();
+      if (g.next(dt).done) break;
       seen = litness() > 0.2 ? seen + dt : Math.max(0, seen - dt);
       if (seen > 0.35) {
         yield* screamAtYou();
@@ -406,7 +422,8 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       const side = Math.random() < 0.5 ? -1 : 1;
       const x = side < 0 ? CORRIDOR.x0 + 0.5 : CORRIDOR.x1 - 0.5;
       place(x, CORRIDOR_LANE_Z, faceAngle(-side, 0));
-      setDynamic(true);
+      drive.force = HUNT_FORCE;
+      let grace = 0;
       let flicker = rand(4, 7), blocked = 0, clip = null, detour = 0, detourSide = 1;
       while (true) {
         const dt = yield;
@@ -418,6 +435,17 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         if (litness() > 0.18) {
           // seen: it stops dead, mid-stride
           drive.speed = 0; actor.setTimeScale(0); blocked = 0;
+          continue;
+        }
+        // you are still building: it waits in the corridor, out of sight beside the doorway, shuffling
+        // (at most ~25 s per hunt, so it cannot be held off for ever)
+        if (building() && grace < 25 && root.position.z < ROOM.z0 - 0.15) {
+          grace += dt;
+          const hold = DOOR.cx + side * 1.5;
+          const off = hold - root.position.x;
+          if (Math.abs(off) > 0.15) { drive.x = Math.sign(off); drive.z = (CORRIDOR_LANE_Z - root.position.z); drive.speed = meta.walk.speed * 2; if (clip !== 'walk') { actor.play('walk', { fade: 0.3 }); clip = 'walk'; } }
+          else { drive.speed = 0; if (clip !== 'idle') { actor.play('idle', { fade: 0.4 }); clip = 'idle'; } }
+          footsteps(0.5);
           continue;
         }
         const dark = !flashlight.on || flashlight.output < 0.13;
@@ -538,7 +566,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       flashlight.stutter(1.2);
       yield* travel([
         [x0, CORRIDOR_LANE_Z], [DOOR.cx - 0.5, CORRIDOR_LANE_Z], [DOOR.cx, ROOM.z0 - 0.2],
-        [DOOR.cx - 0.25, ROOM.z0 + 1.6], [ROOM.x0 + 0.7, -0.4], [ROOM.x0 + 0.5, 0.6],
+        [DOOR.cx, ROOM.z0 + 1.4], [-0.9, -1.5], [-1.5, -0.1],
       ], 'run', { startSpeed: meta.run.speed * 0.8, turnRate: 7 });
       sound && sound.sting(0.7);
     },
@@ -589,11 +617,12 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   /** the flash got it: it screams and runs back out into the corridor */
   function* retreat() {
     stunned = false;
-    setDynamic(false);
+    drive.speed = 0; drive.force = WALK_FORCE;
     yield* screamAtYou();
     actor.play('run', { fade: 0.15 });
     const p = root.position;
-    yield* travel([[p.x, p.z], [DOOR.cx, ROOM.z0 + 0.5], [DOOR.cx, CORRIDOR_LANE_Z], [CORRIDOR.x1 - 0.4, CORRIDOR_LANE_Z]], 'run', { startSpeed: 1, accel: 12 });
+    const way = p.z > ROOM.z0 + 1.1 ? [[p.x, p.z], [DOOR.cx + 0.15, ROOM.z0 + 1.4]] : [[p.x, p.z]];
+    yield* travel([...way, [DOOR.cx, ROOM.z0 + 0.5], [DOOR.cx, CORRIDOR_LANE_Z], [CORRIDOR.x1 - 0.4, CORRIDOR_LANE_Z]], 'run', { startSpeed: 1, accel: 12 });
   }
 
   /** it reached you */
@@ -696,14 +725,14 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       if (!body) return;
       const show = root.visible && !!job;
       if (collider.isEnabled() !== show) collider.setEnabled(show);
-      if (!show) return;
+      if (!show) { drive.speed = 0; return; }
       if (!dynamic) {
         body.setNextKinematicTranslation({ x: root.position.x, y: 0, z: root.position.z });
         return;
       }
       const lv = body.linvel();
       let jx = MASS * (drive.x * drive.speed - lv.x), jz = MASS * (drive.z * drive.speed - lv.z);
-      const j = Math.hypot(jx, jz), cap = DRIVE_FORCE * dt;
+      const j = Math.hypot(jx, jz), cap = drive.force * dt;
       if (j > cap) { jx *= cap / j; jz *= cap / j; }
       body.applyImpulse({ x: jx, y: 0, z: jz }, true);
     },
@@ -720,7 +749,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         const lying = boxes.bait();
         for (const id of [...baitSeen.keys()]) if (!lying.some((b) => b.id === id)) baitSeen.delete(id);
         for (const b of lying) if (!baitSeen.has(b.id)) baitSeen.set(b.id, now + (/candy/i.test(b.icon.name) ? 1.5 : rand(4, 9)));
-        if (!job) {
+        if (!job && !building()) {
           const ready = lying.find((b) => baitSeen.get(b.id) <= now);
           if (ready) { baitBox = ready; baitSeen.delete(ready.id); start('fetch'); }
         }
@@ -731,12 +760,13 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         const { id } = taken.splice(i, 1)[0];
         onReturn && onReturn(id);
       }
+      if (!job && building()) nextAt = Math.max(nextAt, now + 3);   // nothing comes past while you build
       if (!job && now >= nextAt) schedule();
       if (job) {
         const r = job.next(dt);
         if (r.done) {
           job = null; jobName = null; root.visible = false; actor.setEyeGlow(0);
-          if (dynamic) setDynamic(false);
+          setDynamic(false);
           nextAt = now + rand(14, 38);
         }
       }
