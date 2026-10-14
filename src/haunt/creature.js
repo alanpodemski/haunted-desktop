@@ -161,7 +161,8 @@ const pick = (weights) => {
 };
 
 // ----------------------------------------------------------------------------------------- controller
-export async function createCreature(scene, loader, { flashlight, camera, sound, physics, boxes, nav, onEvent, onJumpscare, onBlackout, onReturn, onScare, onCross } = {}) {
+export async function createCreature(scene, loader, { flashlight, camera, sound, physics, boxes, nav, onEvent, onJumpscare, onBlackout, onReturn, onScare, onCross, auto = false } = {}) {
+  // auto: it acts on its own (events, hunts, scares, bait). Off by default: it only moves when you press 1–7 or H.
   const actor = await loadActor(loader);
   const { root, meta } = actor;
   root.visible = false;
@@ -830,7 +831,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         const lying = boxes.bait();
         for (const id of [...baitSeen.keys()]) if (!lying.some((b) => b.id === id)) baitSeen.delete(id);
         for (const b of lying) if (!baitSeen.has(b.id)) baitSeen.set(b.id, now + (/candy/i.test(b.icon.name) ? 1.5 : rand(4, 9)));
-        if (!job && !building()) {
+        if (auto && !job && !building()) {
           const ready = lying.find((b) => baitSeen.get(b.id) <= now);
           if (ready) { baitBox = ready; baitSeen.delete(ready.id); start('fetch'); }
         }
@@ -855,7 +856,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         onReturn && onReturn(id);
       }
       if (!job && building()) nextAt = Math.max(nextAt, now + 3);   // nothing comes past while you build
-      if (!job && now >= nextAt) schedule();
+      if (auto && !job && now >= nextAt) schedule();
       if (job) {
         const r = job.next(dt);
         if (r.done) {

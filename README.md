@@ -34,7 +34,10 @@ it comes down the hallway for you, and your light does not stop it.
 | ? | Show or hide the controls legend (top left) |
 | 1 to 7 | Make it happen now: cross, wander, dash, crawl, peek, at the far window, hunt (for recording) |
 
-URL options: `?nohud` hides the legend, `?hq` renders at full Retina resolution, `?low` renders below CSS resolution.
+It only moves when you tell it to (1 to 7, H). `?auto` lets it act on its own again: events every few seconds, hunts,
+scares and bait.
+
+URL options: `?nohud` hides the legend, `?auto` turns its own schedule on, `?hq` renders at full Retina resolution, `?low` renders below CSS resolution.
 
 ## How to survive
 

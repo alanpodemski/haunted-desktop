@@ -15,7 +15,7 @@ import { createBoxes } from './boxes.js';
 import { createPhoto } from './photo.js';
 import { createItems } from './items.js';
 
-export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
+export async function createHaunt(canvas, { sound, desk, quality = 1, auto = false } = {}) {
   // Render at CSS-pixel resolution (1×) by default: the scene is dark and grainy, so 2× Retina pixels are
   // invisible here but cost 4× the GPU work. ?hq goes back to the full device resolution.
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -127,7 +127,7 @@ export async function createHaunt(canvas, { sound, desk, quality = 1 } = {}) {
   const baseQuat = camera.quaternion.clone();
   let shake = 0;
   const creature = await createCreature(scene, loader, {
-    flashlight, camera, sound, physics, boxes, nav,
+    flashlight, camera, sound, physics, boxes, nav, auto,
     onJumpscare() {
       shake = 1;
       boxes.blast(camera.position, 60, 4);

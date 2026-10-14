@@ -25,7 +25,7 @@ async function boot() {
     onDropMany: (icons, x, y) => (dropManyHandler ? dropManyHandler(icons, x, y) : []),
   });
   let dropManyHandler = null;
-  const haunt = await createHaunt(document.getElementById('scene'), { sound, desk, quality: q.has('hq') ? 2 : q.has('low') ? 0.5 : 1 });
+  const haunt = await createHaunt(document.getElementById('scene'), { sound, desk, quality: q.has('hq') ? 2 : q.has('low') ? 0.5 : 1, auto: q.has('auto') });
   // folders and documents become boxes; .usdz files are the things you defend yourself with
   dropHandler = (icon, x, y) => {
     if (!itemType(icon.name)) return haunt.boxes.drop(icon, x, y);
