@@ -403,14 +403,15 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     /** out of one room and straight across the hallway into the room opposite */
     *cross() {
       const a = pickDoor(), b = across(a);
-      const run = Math.random() < 0.35;
+      const run = Math.random() < 0.7;
       yield* roomToRoom(a, b, run ? 'run' : 'walk', run ? meta.run.speed : meta.walk.speed * 2.4);
     },
-    /** out of a room and along the hallway, to a room further down or nearer you */
+    /** out of a room and along the hallway, to a room further down or nearer you; mostly at a run */
     *wander() {
       const a = pickDoor();
       const b = pickDoor((d) => d !== a && Math.abs(d.door.z - a.door.z) > 3) || across(a);
-      yield* roomToRoom(a, b, 'walk', meta.walk.speed * 2);
+      const run = Math.random() < 0.8;
+      yield* roomToRoom(a, b, run ? 'run' : 'walk', run ? meta.run.speed : meta.walk.speed * 2);
     },
     /** a sprint across the hallway (usually with lightning as it crosses, so you see it for that instant) */
     *dash() {
@@ -458,7 +459,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       setDynamic(false);                 // it stands still against the jamb
       actor.play('idle', { fade: 0.4 });
       let seen = 0, t = 0;
-      const patience = rand(8, 14);
+      const patience = rand(2.5, 4);
       while (t < patience) {
         const dt = yield; t += dt;
         actor.setEyeGlow(eyeGlow());
@@ -467,7 +468,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       }
       setDynamic(true);
       if (seen > 0.15) { yield* screamAtYou(); actor.play('run', { fade: 0.15 }); yield* travel([[root.position.x, root.position.z], [d.inside.x, d.inside.z]], 'run', { startSpeed: 1 }); }
-      else { actor.play('walk', { fade: 0.3 }); yield* travel([[root.position.x, root.position.z], [d.inside.x, d.inside.z]], 'walk', { speed: meta.walk.speed * 1.5 }); }
+      else { actor.play('run', { fade: 0.2 }); yield* travel([[root.position.x, root.position.z], [d.inside.x, d.inside.z]], 'run', { startSpeed: 1 }); }
     },
     /** a figure at the far end, against the window; when it is found it walks into the last room */
     *endwatch() {
@@ -481,7 +482,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       setDynamic(false);
       actor.play('idle', { fade: 0.5 });
       let seen = 0, t = 0;
-      const patience = rand(10, 18);
+      const patience = rand(3, 5);
       while (t < patience) {
         const dt = yield; t += dt;
         actor.setEyeGlow(eyeGlow());
@@ -490,8 +491,8 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       }
       setDynamic(true);
       const d = nearestDoor(root.position);
-      actor.play('walk', { fade: 0.3 });
-      yield* travel([[root.position.x, root.position.z], ...enterPath(d)], 'walk', { speed: meta.walk.speed * (seen > 0.6 ? 2.6 : 1.4) });
+      actor.play('run', { fade: 0.2 });
+      yield* travel([[root.position.x, root.position.z], ...enterPath(d)], 'run', { startSpeed: 1 });
     },
     *hunt() {
       hunting = true; stunned = false;
@@ -744,9 +745,9 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
 
   function schedule() {
     const now = performance.now() / 1000;
-    // fast runs across are the hook: it opens with three sprints, and after that ~70% of what it does is running or
-    // crawling (dash, crawl), the rest the slow, standing kinds (wander, peek, the far window, a walk across)
-    const w = { dash: 45, crawl: 25, cross: 9, wander: 8, peek: 8, endwatch: 5 };
+    // fast runs are the hook: it opens with three sprints, and after that nearly everything it does is running or
+    // crawling; standing still (peek, the far window) is rare and short
+    const w = { dash: 50, crawl: 22, wander: 16, cross: 6, peek: 3, endwatch: 3 };
     if (!actor.has('peek')) delete w.peek;
     if (count < 3) { start('dash'); return; }
     if (now >= nextHuntAt) { start('hunt'); return; }
@@ -790,7 +791,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     },
     /** lightning: for the length of the flash it may be standing at the far end, or in a far doorway */
     stageForLightning() {
-      if (job || hunting || Math.random() > 0.4) return null;
+      if (job || hunting || Math.random() > 0.2) return null;
       const far = Math.random() < 0.5;
       const [x, z] = far ? [rand(-0.3, 0.3), nav.end.z + 0.7] : out(pickDoor((d) => d.door.z < -7), -0.1);
       ghost.root.position.set(x, 0, z);
@@ -860,7 +861,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         if (r.done) {
           job = null; jobName = null; root.visible = false; actor.setEyeGlow(0);
           setDynamic(false);
-          nextAt = now + (now - bornAt < 75 ? rand(5, 11) : rand(10, 26));
+          nextAt = now + (now - bornAt < 75 ? rand(5, 11) : rand(7, 16));
         }
       }
     },
