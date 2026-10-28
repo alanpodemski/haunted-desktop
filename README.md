@@ -34,8 +34,9 @@ it comes down the hallway for you, and your light does not stop it.
 | ? | Show or hide the controls legend (top left) |
 | 1 to 7 | Make it happen now: cross, wander, dash, crawl, peek, at the far window, hunt (for recording) |
 
-It only moves when you tell it to (1 to 7, H). `?auto` lets it act on its own again: events every few seconds, hunts,
-scares and bait.
+On its own it only runs past (sprints, crawls, a run along the hallway) every few seconds, through a storm that
+lightens the windows every 8 to 22 s; everything else waits for 1 to 7 or H. It screams only now and then. `?auto`
+lets it do everything on its own: peeks, hunts, scares and bait.
 
 URL options: `?nohud` hides the legend, `?auto` turns its own schedule on, `?hq` renders at full Retina resolution, `?low` renders below CSS resolution.
 
@@ -94,9 +95,9 @@ The camera has another use. Take a few photos of the empty room and look at them
   drags itself along the floor, stands in the doorway in the dark, or (rarely) comes into the room. If the beam lands
   on it, it turns to you, screams and runs. Its ground speed comes from each animation's own root motion, so its
   feet do not slide.
-- **Sound.** Recorded effects generated with the ElevenLabs Sound Effects API (`scripts/gen-sounds.mjs`, 29 sounds:
+- **Sound.** Recorded effects generated with the ElevenLabs Sound Effects API (`scripts/gen-sounds.mjs`, 30 sounds:
   its breathing that comes closer during a hunt, growls, moans from behind walls, shrieks, a far-off child's giggle,
-  whispers when you sit in the dark, doors, thunder, the house's room tone, barefoot steps, tearing cardboard), each
+  whispers when you sit in the dark, doors, thunder and rain, the house's room tone, barefoot steps, tearing cardboard), each
   loudness-matched and trimmed at load. Where a recording is missing, a synthesised WebAudio version plays instead.
   Everything is panned in 3D and muffled through walls. Each step sounds when one of its feet (or,
   crawling, a hand) goes from swinging to planted on the floor, as loud as the body is moving, so the steps you hear

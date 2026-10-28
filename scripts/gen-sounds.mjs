@@ -44,6 +44,7 @@ export const SOUNDS = [
   ['door_creak_2', 1.5, 0.6, 'a short squeak of an old door hinge, close, no music'],
   ['thunder_1', 7, 0.5, 'a loud crack of thunder nearby followed by a long rolling rumble, heard from inside an old house, rain on windows, no music'],
   ['thunder_2', 6, 0.5, 'distant thunder rumble rolling across the sky, heard indoors, no music'],
+  ['rain', 22, 0.5, 'steady heavy rain on old windows and a roof heard from inside a dark wooden house, gusts of wind, no thunder, seamless loop, no music'],
   ['ambience', 22, 0.4, 'dark ambient room tone of an abandoned house at night, wind outside, very faint creaks, low drone, seamless loop, no music'],
   // footsteps of a heavy barefoot man on old floorboards
   ['step_walk_1', 0.6, 0.7, 'a single slow heavy bare footstep on an old creaky wooden floorboard, close, dry, no music'],

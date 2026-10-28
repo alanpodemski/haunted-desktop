@@ -162,7 +162,8 @@ const pick = (weights) => {
 
 // ----------------------------------------------------------------------------------------- controller
 export async function createCreature(scene, loader, { flashlight, camera, sound, physics, boxes, nav, onEvent, onJumpscare, onBlackout, onReturn, onScare, onCross, auto = false } = {}) {
-  // auto: it acts on its own (events, hunts, scares, bait). Off by default: it only moves when you press 1–7 or H.
+  // auto: it acts on its own (events, hunts, scares, bait). Off by default: then it only runs past on its own (sprints,
+  // crawls, a run along the hallway) and everything else waits for 1–7 or H.
   const actor = await loadActor(loader);
   const { root, meta } = actor;
   root.visible = false;
@@ -359,8 +360,9 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     return boxes.near(new THREE.Vector3(root.position.x + fx * 0.55, 0, root.position.z + fz * 0.55), 1.0).length > 0;
   }
 
-  /** caught in the light: it turns to you and screams, then runs */
-  function* screamAtYou() {
+  /** caught in the light: it turns to you and (only now and then, unless `always`) screams, then runs */
+  function* screamAtYou(always = false) {
+    if (!always && Math.random() > 0.2) { flashlight.stutter(0.25); return; }
     sound && sound.sting(1);
     flashlight.stutter(0.6);
     if (!actor.has('scream')) return;
@@ -683,8 +685,8 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   function* retreat() {
     stunned = false;
     drive.speed = 0; drive.force = WALK_FORCE;
-    yield* screamAtYou();
-    sound && sound.voice && sound.voice('scream_far', { pos: root.position.clone().setY(1.6), gain: 0.9 });
+    yield* screamAtYou(true);
+    if (Math.random() < 0.3) sound && sound.voice && sound.voice('scream_far', { pos: root.position.clone().setY(1.6), gain: 0.9 });
     actor.play('run', { fade: 0.15 });
     const p = root.position;
     // into the nearest room that is not behind you
@@ -751,6 +753,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     const w = { dash: 50, crawl: 22, wander: 16, cross: 6, peek: 3, endwatch: 3 };
     if (!actor.has('peek')) delete w.peek;
     if (count < 3) { start('dash'); return; }
+    if (!auto) { start(pick({ dash: 55, crawl: 25, wander: 20 })); return; }
     if (now >= nextHuntAt) { start('hunt'); return; }
     if (last && w[last] && last !== 'dash') w[last] *= 0.3;
     if (now - lastScare > 70 && now - bornAt > 40 && Math.random() < 0.3) { lastScare = now; start('scare'); return; }
@@ -856,7 +859,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         onReturn && onReturn(id);
       }
       if (!job && building()) nextAt = Math.max(nextAt, now + 3);   // nothing comes past while you build
-      if (auto && !job && now >= nextAt) schedule();
+      if (!job && now >= nextAt) schedule();
       if (job) {
         const r = job.next(dt);
         if (r.done) {

@@ -46,7 +46,7 @@ export function createSound() {
     for (let i = start; i < d.length; i++) { if (Math.abs(d[i]) > peak * 0.02) { sum += d[i] * d[i]; n++; } }
     const rms = Math.sqrt(sum / Math.max(1, n));
     // footsteps and knocks are matched by peak, everything else by loudness
-    const want = step ? 0.6 / Math.max(1e-4, peak) : (name === 'ambience' ? 0.05 : 0.11) / Math.max(1e-4, rms);
+    const want = step ? 0.6 / Math.max(1e-4, peak) : (name === 'ambience' || name === 'rain' ? 0.05 : 0.11) / Math.max(1e-4, rms);
     levels.set(name, { gain: Math.min(8, want), lead: Math.max(0, start / buf.sampleRate - 0.005), peak, rms });
   }
   async function loadSamples() {
@@ -63,6 +63,8 @@ export function createSound() {
       } catch { /* skip */ }
     }));
     if (buffers.has('ambience') && !ambience) ambience = play('ambience', { loop: true, gain: 0.45, wet: false });
+    // the storm outside, under everything
+    if (buffers.has('rain')) play('rain', { loop: true, gain: 0.35, wet: false });
   }
   const variants = (prefix) => [...buffers.keys()].filter((k) => k === prefix || k.startsWith(prefix + '_'));
   const has = (prefix) => variants(prefix).length > 0;

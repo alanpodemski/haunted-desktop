@@ -68,6 +68,10 @@
     "seconds": 6
   },
   {
+    "name": "rain",
+    "seconds": 22
+  },
+  {
     "name": "ambience",
     "seconds": 22
   },
