@@ -393,7 +393,8 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     if (clip === 'walk' && Math.random() < 0.4 && sound && sound.voice) sound.voice('moan', { pos: a.inside.clone().setY(1.6), gain: 0.7, occluded: true });
     const path = [...exitPath(a), ...enterPath(b)];
     let flashed = !flash;
-    const ok = yield* travelWatchful(path, clip, speed, () => litness() > 0.2, () => {
+    // on its own (?auto) the beam on it makes it bolt back; when you call it with a key it keeps going, lit or not
+    const ok = yield* travelWatchful(path, clip, speed, () => auto && litness() > 0.2, () => {
       if (!flashed && Math.abs(root.position.x) < 0.45) { flashed = true; onCross && onCross(); }
     });
     if (!ok) yield* bolt();
