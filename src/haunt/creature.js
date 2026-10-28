@@ -206,7 +206,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
   let items = null;                           // candles, flares, music boxes (set after creation)
   let baitBox = null, baitSeen = new Map();   // box id -> when it was first seen lying in the corridor
   const taken = [];                            // files it carried off, and when they come back
-  let last = null, count = 0, lastScare = performance.now() / 1000, voiceIn = rand(12, 20);
+  let last = null, count = 0, lastScare = performance.now() / 1000, voiceIn = rand(12, 20), whisperIn = rand(4, 8);
   const tmp = v3(), head = v3(), chest = v3();
 
   const faceAngle = (dx, dz) => Math.atan2(dx, dz);   // model faces +Z
@@ -839,6 +839,13 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
       }
       // the house is never quite silent: moans behind walls, a breath from a far room, rarely a child's giggle, and if
       // you sit in the dark, a whisper right next to you
+      // whispers close to your ears, often, whatever it is doing: left, right, a little behind you
+      whisperIn -= dt;
+      if (whisperIn < 0 && sound && sound.voice) {
+        whisperIn = rand(7, 16);
+        const side = Math.random() < 0.5 ? -1 : 1;
+        sound.voice(Math.random() < 0.7 ? 'whisper' : 'laugh_whisper', { pos: camera.position.clone().add(new THREE.Vector3(side * rand(0.4, 0.9), rand(-0.1, 0.15), rand(0.1, 0.5))), gain: rand(0.35, 0.6), wet: false });
+      }
       voiceIn -= dt;
       if (voiceIn < 0 && !hunting && sound && sound.voice) {
         voiceIn = rand(22, 55);

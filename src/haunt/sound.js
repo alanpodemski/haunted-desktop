@@ -69,7 +69,7 @@ export function createSound() {
   let rain = null;
   function beds() {
     if (!ambience && buffers.has('ambience')) ambience = play('ambience', { loop: true, gain: 0.45, wet: false });
-    if (!rain && buffers.has('rain')) rain = play('rain', { loop: true, gain: 1.6, wet: false });
+    if (!rain && buffers.has('rain')) rain = play('rain', { loop: true, gain: 0.75, wet: false });
     if ((!ambience && buffers.has('ambience')) || (!rain && buffers.has('rain'))) setTimeout(beds, 500);
   }
   const variants = (prefix) => [...buffers.keys()].filter((k) => k === prefix || k.startsWith(prefix + '_'));
