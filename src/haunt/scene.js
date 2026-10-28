@@ -93,14 +93,14 @@ export async function createHaunt(canvas, { sound, desk, quality = 1, auto = fal
 
   // Lightning: now and then the sky behind the windows flashes two or three times; the thunder follows a second or
   // three later (the storm is a few hundred metres to a kilometre off). For that instant the whole hallway shows.
-  // a storm: it strikes on its own every 8–22 s (and when it sprints across)
-  let nextLightning = performance.now() / 1000 + 6 + Math.random() * 6, strike = null;
+  // a storm: it strikes on its own every 5–14 s (and when it sprints across)
+  let nextLightning = performance.now() / 1000 + 3 + Math.random() * 4, strike = null;
   function lightning(dt) {
     const now = performance.now() / 1000;
     if (!strike && now >= nextLightning) {
       const pulses = [[0, 0.07, 1], [0.16, 0.05, 0.6], [0.4, 0.12, 0.85]].slice(0, 2 + (Math.random() < 0.6 ? 1 : 0));
       strike = { t: 0, pulses, unstage: creature.stageForLightning() };
-      nextLightning = now + 8 + Math.random() * 14;
+      nextLightning = now + 5 + Math.random() * 9;
       if (sound) setTimeout(() => sound.thunder(0.6 + Math.random() * 0.4), 1000 + Math.random() * 2000);
     }
     let k = 0;

@@ -62,9 +62,15 @@ export function createSound() {
         if (pk >= (/^(step|crawl|box_thud)/.test(name) ? 0.08 : 0.005)) buffers.set(name, b);
       } catch { /* skip */ }
     }));
-    if (buffers.has('ambience') && !ambience) ambience = play('ambience', { loop: true, gain: 0.45, wet: false });
-    // the storm outside, under everything
-    if (buffers.has('rain')) play('rain', { loop: true, gain: 0.35, wet: false });
+    beds();
+  }
+  // the beds that never stop: the house's room tone and the storm outside. Started as soon as the audio is running
+  // (it may still be resuming when the recordings finish loading), retried until they play.
+  let rain = null;
+  function beds() {
+    if (!ambience && buffers.has('ambience')) ambience = play('ambience', { loop: true, gain: 0.45, wet: false });
+    if (!rain && buffers.has('rain')) rain = play('rain', { loop: true, gain: 1.6, wet: false });
+    if ((!ambience && buffers.has('ambience')) || (!rain && buffers.has('rain'))) setTimeout(beds, 500);
   }
   const variants = (prefix) => [...buffers.keys()].filter((k) => k === prefix || k.startsWith(prefix + '_'));
   const has = (prefix) => variants(prefix).length > 0;
@@ -145,7 +151,7 @@ export function createSound() {
     /** call from a user gesture */
     unlock() { if (ensure() && ctx.state === 'suspended') ctx.resume(); return !!ctx; },
     get ready() { return !!ctx && ctx.state === 'running'; },
-    setMuted(m) { muted = m; if (master) master.gain.value = m ? 0 : 0.9; },
+    setMuted(m) { muted = m; if (!m) beds(); if (master) master.gain.value = m ? 0 : 0.9; },
     get muted() { return muted; },
     setListener(cam) {
       if (!ctx || listenerSet) return;

@@ -162,8 +162,7 @@ const pick = (weights) => {
 
 // ----------------------------------------------------------------------------------------- controller
 export async function createCreature(scene, loader, { flashlight, camera, sound, physics, boxes, nav, onEvent, onJumpscare, onBlackout, onReturn, onScare, onCross, auto = false } = {}) {
-  // auto: it acts on its own (events, hunts, scares, bait). Off by default: then it only runs past on its own (sprints,
-  // crawls, a run along the hallway) and everything else waits for 1–7 or H.
+  // auto: it acts on its own (events, hunts, scares, bait). Off by default: then it only moves when you press 1–7 or H.
   const actor = await loadActor(loader);
   const { root, meta } = actor;
   root.visible = false;
@@ -753,7 +752,6 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
     const w = { dash: 50, crawl: 22, wander: 16, cross: 6, peek: 3, endwatch: 3 };
     if (!actor.has('peek')) delete w.peek;
     if (count < 3) { start('dash'); return; }
-    if (!auto) { start(pick({ dash: 55, crawl: 25, wander: 20 })); return; }
     if (now >= nextHuntAt) { start('hunt'); return; }
     if (last && w[last] && last !== 'dash') w[last] *= 0.3;
     if (now - lastScare > 70 && now - bornAt > 40 && Math.random() < 0.3) { lastScare = now; start('scare'); return; }
@@ -859,7 +857,7 @@ export async function createCreature(scene, loader, { flashlight, camera, sound,
         onReturn && onReturn(id);
       }
       if (!job && building()) nextAt = Math.max(nextAt, now + 3);   // nothing comes past while you build
-      if (!job && now >= nextAt) schedule();
+      if (auto && !job && now >= nextAt) schedule();
       if (job) {
         const r = job.next(dt);
         if (r.done) {
